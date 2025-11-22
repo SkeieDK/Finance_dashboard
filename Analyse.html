@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finansielt Overblik</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for interactive charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns/"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Lighter gray for background */
+        }
+        .chart-container {
+            position: relative;
+            height: 350px;
+            width: 100%;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            padding: 1.5rem;
+        }
+        .tab-btn {
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+            border-bottom: 4px solid transparent;
+            transition: all 0.2s ease-in-out;
+            color: #6b7280;
+        }
+        .tab-btn.active {
+            color: #4f46e5; /* Indigo */
+            border-color: #4f46e5;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .view-btn-group button {
+             padding: 0.5rem 1rem;
+             font-weight: 500;
+             transition: all 0.2s ease-in-out;
+             border-radius: 0.5rem;
+             color: #374151;
+        }
+        .view-btn-group button.active {
+            background-color: #4f46e5;
+            color: white;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        }
+
+        select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+        }
+        #mainContent { display: none; }
+        .progress-bar {
+            background-color: #e5e7eb;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            height: 1.5rem;
+        }
+        .progress-bar-fill {
+            background-color: #4ade80; /* Green 400 */
+            height: 100%;
+            transition: width 0.5s ease-in-out;
+            text-align: center;
+            color: #14532d; /* Dark Green */
+            font-weight: 600;
+            line-height: 1.5rem;
+        }
+        .clickable-row, .chart-canvas-clickable {
+            cursor: pointer;
+        }
+        .clickable-row:hover {
+            background-color: #f9fafb; /* Gray 50 */
+        }
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+        }
+        .sortable-header:hover {
+            color: #111827;
+        }
+        .sort-asc::after {
+            content: ' ▲';
+            font-size: 0.8em;
+        }
+        .sort-desc::after {
+            content: ' ▼';
+            font-size: 0.8em;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-[1600px] 2xl:max-w-[1800px] mx-auto">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Dit Finansielle Dashboard</h1>
+            <p class="text-gray-500 mt-1">Et strategisk værktøj på din vej mod økonomisk uafhængighed.</p>
+        </header>
+
+        <!-- Auto-load Info Section -->
+        <div id="autoLoadSection" class="card mb-6">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Indlæser alle CSV-filer automatisk</h2>
+            <p class="text-gray-600 mb-4">Alle relevante CSV-filer i mappen indlæses automatisk. Ingen manuel filvalg er nødvendig.</p>
+            <div id="loadSummary" class="text-sm mt-2 text-center text-gray-600"></div>
+        </div>
+
+
+        <!-- Main Content (initially hidden) -->
+        <div id="mainContent">
+            <!-- GLOBAL View Controls -->
+            <div class="card mb-6">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                     <div class="flex items-center p-1 bg-gray-100 rounded-lg view-btn-group">
+                        <button id="btnFull" class="active">Fuld Periode</button>
+                        <button id="btnYear">Årligt</button>
+                        <button id="btnMonth">Månedligt</button>
+                    </div>
+                    <div id="periodSelectors" class="flex items-center gap-4">
+                        <select id="yearSelector" class="hidden bg-white border border-gray-300 rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[100px]"></select>
+                        <select id="monthSelector" class="hidden bg-white border border-gray-300 rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[120px]"></select>
+                    </div>
+                     <div id="resetFilterBtnContainer" class="hidden">
+                        <button id="resetFilterBtn" class="text-sm text-indigo-600 hover:text-indigo-800 font-semibold">Nulstil filter</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABS -->
+            <div class="mb-6 border-b border-gray-200">
+                <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                    <button id="tab-forbrug" class="tab-btn active">Forbrugsoverblik</button>
+                    <button id="tab-formue" class="tab-btn">Formue & FI</button>
+                    <button id="tab-investeringer" class="tab-btn">Investeringer</button>
+                </nav>
+            </div>
+
+            <!-- TAB 1: FORBRUGSOVERBLIK -->
+            <div id="content-forbrug" class="tab-content active">
+                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Balance KPIs -->
+                    <div id="balanceKpis" class="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-6">
+                        <!-- KPI cards will be generated here by JS -->
+                    </div>
+
+                    <!-- Key Metrics -->
+                    <div class="lg:col-span-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
+                        <div class="card text-center"><h2 class="text-sm font-semibold text-gray-500 mb-2">Total Indkomst</h2><p id="totalIncome" class="text-2xl font-bold text-gray-800">Indlæser...</p></div>
+                        <div class="card text-center"><h2 class="text-sm font-semibold text-gray-500 mb-2">Total Forbrug</h2><p id="totalSpending" class="text-2xl font-bold text-gray-800">Indlæser...</p></div>
+                        <div class="card text-center"><h2 class="text-sm font-semibold text-gray-500 mb-2">Netto (Cash Flow)</h2><p id="netFlow" class="text-2xl font-bold text-blue-600">Indlæser...</p></div>
+                        <div class="card text-center"><h2 class="text-sm font-semibold text-gray-500 mb-2">Gns. Indkomst/md.</h2><p id="avgIncome" class="text-2xl font-bold text-gray-800">Indlæser...</p></div>
+                        <div class="card text-center"><h2 class="text-sm font-semibold text-gray-500 mb-2">Gns. Forbrug/md.</h2><p id="avgSpending" class="text-2xl font-bold text-gray-800">Indlæser...</p><p id="avgSpendingBreakdown" class="text-xs text-gray-500"></p></div>
+                        <div class="card text-center"><h2 class="text-sm font-semibold text-gray-500 mb-2">Opsparingsrate</h2><p id="savingsRate" class="text-2xl font-bold text-green-600">Indlæser...</p></div>
+                    </div>
+                    
+                    <!-- NEW: Income Overview Section -->
+                    <div class="card lg:col-span-3">
+                        <h2 class="text-xl font-semibold text-gray-700 mb-4">Indkomstoversigt</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="md:col-span-1">
+                                <div class="chart-container" style="height: 250px;">
+                                    <canvas id="incomeSourceChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="md:col-span-2">
+                                <div class="overflow-y-auto" style="max-height: 250px;">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kategori</th>
+                                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Beløb</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="incomeSummaryTable" class="bg-white divide-y divide-gray-200"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Balance Over Time and 50/30/20 Rule -->
+                    <div class="card lg:col-span-2"><h2 class="text-xl font-semibold text-gray-700 mb-4">Samlet Saldo Over Tid</h2><div class="chart-container"><canvas id="balanceChart"></canvas></div></div>
+                    <div class="card lg:col-span-1"><h2 class="text-xl font-semibold text-gray-700 mb-4">50/30/20 Budget-analyse</h2><div class="chart-container" style="height: 250px;"><canvas id="budgetRuleChart" class="chart-canvas-clickable"></canvas></div><div id="budgetRuleDetails" class="text-sm mt-4 space-y-2"></div></div>
+                    
+                    <!-- Expense Breakdown (with avg toggle) - expanded to full width -->
+                    <div class="card lg:col-span-3">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 id="expense-breakdown-title" class="text-xl font-semibold text-gray-700">Udgiftsfordeling pr. Kategori</h2>
+                            <button id="expenseToggleAvgButton" class="text-sm bg-indigo-600 text-white px-3 py-1 rounded-md hover:bg-indigo-700">Vis som gennemsnit</button>
+                        </div>
+                        <div class="chart-container" style="height: 480px;"><canvas id="expenseChart" class="chart-canvas-clickable"></canvas></div>
+                        <div id="totalExpenses" class="text-center mt-4 text-gray-600"></div>
+                    </div>
+                    <!-- Average table removed per user request -->
+
+                    <!-- All Transactions Table -->
+                    <div class="card lg:col-span-3"><div class="flex justify-between items-center mb-4"><h2 id="transactionsTitle" class="text-xl font-semibold text-gray-700">Alle Transaktioner</h2></div><div class="overflow-y-auto" style="max-height: 400px;"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50 sticky top-0"><tr><th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dato</th><th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Beskrivelse</th><th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kategori</th><th id="mainAmountHeader" scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header">Beløb (DKK)</th></tr></thead><tbody id="transactionsTable" class="bg-white divide-y divide-gray-200"></tbody></table></div></div>
+                 </div>
+            </div>
+
+            <!-- TAB 2: FORMUE & FI -->
+            <div id="content-formue" class="tab-content">
+                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- FI Tracker & Insights -->
+                    <div class="card lg:col-span-2">
+                        <h2 class="text-xl font-semibold text-gray-700 mb-4">Vej mod Finansiel Uafhængighed (FI)</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                            <div><label for="fiAnnualSpending" class="block text-sm font-medium text-gray-700">Ønsket årligt forbrug (pension)</label><input type="number" id="fiAnnualSpending" value="300000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                            <div><label for="fiCurrentInvestments" class="block text-sm font-medium text-gray-700">Nuværende investeringer</label><input type="number" id="fiCurrentInvestments" value="25000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                            <div><label for="fiHomeValue" class="block text-sm font-medium text-gray-700">Nuværende boligværdi</label><input type="number" id="fiHomeValue" value="1175000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                            <div><label for="fiPension" class="block text-sm font-medium text-gray-700">Nuværende pensionsdepoter</label><input type="number" id="fiPension" value="140000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                        </div>
+                        <div class="mt-6">
+                            <div class="flex justify-between mb-1">
+                                <span class="text-base font-medium text-gray-700">Din Vej mod FI (Nettoformue)</span>
+                                <span id="fiNumber" class="text-sm font-medium text-gray-700">Mål: 7.500.000 kr.</span>
+                            </div>
+                            <div class="progress-bar"><div id="fiProgressBar" class="progress-bar-fill" style="width: 0%;">0%</div></div>
+                        </div>
+                         <div id="fiSummary" class="mt-4 text-sm text-gray-600 space-y-1"></div>
+                    </div>
+
+                    <div class="card lg:col-span-1">
+                        <h2 class="text-xl font-semibold text-gray-700 mb-4">Indsigter & Trends</h2>
+                        <ul id="insightsList" class="space-y-3 text-sm text-gray-700">
+                            <li>Indlæs data for at se indsigter...</li>
+                        </ul>
+                    </div>
+                    
+                    <!-- Debt Overview -->
+                    <div class="card lg:col-span-3">
+                        <h2 class="text-xl font-semibold text-gray-700 mb-4">Gældsoverblik & Analyse</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <div class="md:col-span-1"><h3 class="text-lg font-medium text-gray-800 mb-2">Lånedetaljer</h3><div id="loanDetails" class="space-y-4"></div></div>
+                            <div class="md:col-span-1"><h3 class="text-lg font-medium text-gray-800 mb-2">Omkostninger vs. Afdrag</h3><div class="chart-container" style="height: 250px;"><canvas id="debtPaymentChart"></canvas></div></div>
+                            <div class="md:col-span-1"><h3 class="text-lg font-medium text-gray-800 mb-2">Beregningsgrundlag</h3><div id="debtCalculationDetails" class="text-sm space-y-2"></div></div>
+                        </div>
+                    </div>
+                 </div>
+            </div>
+
+            <!-- TAB 3: INVESTERINGER -->
+            <div id="content-investeringer" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="card">
+                        <h2 class="text-xl font-semibold text-gray-700 mb-2">Investeringer — Enkel indtastning</h2>
+                        <p class="text-sm text-gray-500 mb-4">Indtast aktuelle depoter og månedlige indbetalinger. Vi viser en simpel oversigt. (Aktiesparekonto er erstattet af Pension.)</p>
+
+                        <div class="space-y-4">
+                            <div class="border rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-lg font-medium text-gray-800">Pension</h3>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Nuværende depot (kr.)</label>
+                                        <input type="number" id="invPensionBalance" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Månedlig indbetaling (kr.)</label>
+                                        <input type="number" id="invPensionMonthly" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Forventet afkast p.a. (%)</label>
+                                        <input type="number" id="invPensionReturn" step="0.1" value="5" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-lg font-medium text-gray-800">Frie investeringer</h3>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Nuværende depot (kr.)</label>
+                                        <input type="number" id="invFreeBalance" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Månedlig indbetaling (kr.)</label>
+                                        <input type="number" id="invFreeMonthly" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Forventet afkast p.a. (%)</label>
+                                        <input type="number" id="invFreeReturn" step="0.1" value="7" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Årlig skat på afkast (%)</label>
+                                        <input type="number" id="invFreeTax" step="0.1" value="27" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Årligt gebyr/omk. (%)</label>
+                                        <input type="number" id="invFreeFee" step="0.1" value="0.2" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Skattemodel</label>
+                                        <select id="invFreeTaxModel" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                            <option value="annual">Årlig skat af afkast (forenklet)</option>
+                                            <option value="deferred">Skat ved realisation (deferred)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3">
+                                <button id="invSaveBtn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700">Gem</button>
+                                <button id="invResetBtn" class="bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-md hover:bg-gray-300">Nulstil</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2 class="text-xl font-semibold text-gray-700 mb-2">Oversigt</h2>
+                        <p class="text-sm text-gray-500 mb-4">Samlet oversigt over indtastede depoter og månedlige indbetalinger.</p>
+                        <div id="investmentSummary" class="text-sm text-gray-700">
+                            <div>Indlæs data og klik <strong>Gem</strong> for at se oversigten.</div>
+                        </div>
+                        <div class="mt-4">
+                            <h3 class="text-md font-medium text-gray-800 mb-2">Graf & Beregninger</h3>
+                            <div class="chart-container" style="height: 300px;"><canvas id="investmentChart"></canvas></div>
+                            <div id="investmentResults" class="mt-3 text-sm text-gray-700"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                    (function(){
+                        const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 0 });
+                        const MONTHS_PER_YEAR = 12;
+
+                        function load() {
+                            const p = JSON.parse(localStorage.getItem('invPension') || '{}');
+                            const f = JSON.parse(localStorage.getItem('invFree') || '{}');
+                            document.getElementById('invPensionBalance').value = p.balance || 0;
+                            document.getElementById('invPensionMonthly').value = p.monthly || 0;
+                            document.getElementById('invPensionReturn').value = p.return || 5;
+                            // Use aktiedepot for Frie investeringer depot
+                            document.getElementById('invFreeBalance').value = typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : (f.balance || 0);
+                            document.getElementById('invFreeMonthly').value = f.monthly || 0;
+                            document.getElementById('invFreeReturn').value = f.return || 7;
+                            document.getElementById('invFreeTax') && (document.getElementById('invFreeTax').value = f.tax || 27);
+                            document.getElementById('invFreeFee') && (document.getElementById('invFreeFee').value = f.fee || 0.2);
+                            document.getElementById('invFreeTaxModel') && (document.getElementById('invFreeTaxModel').value = f.taxModel || 'annual');
+                            renderSummary();
+                            runSimulationAndRender();
+                        }
+
+                        function save() {
+                            const p = { balance: Number(document.getElementById('invPensionBalance').value) || 0, monthly: Number(document.getElementById('invPensionMonthly').value) || 0, return: Number(document.getElementById('invPensionReturn').value) || 0 };
+                            const f = { balance: Number(document.getElementById('invFreeBalance').value) || 0, monthly: Number(document.getElementById('invFreeMonthly').value) || 0, return: Number(document.getElementById('invFreeReturn').value) || 0, tax: Number(document.getElementById('invFreeTax').value) || 0, fee: Number(document.getElementById('invFreeFee').value) || 0, taxModel: document.getElementById('invFreeTaxModel').value || 'annual' };
+                            localStorage.setItem('invPension', JSON.stringify(p));
+                            localStorage.setItem('invFree', JSON.stringify(f));
+                            renderSummary();
+                            runSimulationAndRender();
+                        }
+
+                        function resetAll() {
+                            localStorage.removeItem('invPension');
+                            localStorage.removeItem('invFree');
+                            load();
+                        }
+
+                        function renderSummary(){
+                            const p = JSON.parse(localStorage.getItem('invPension') || '{}');
+                            const f = JSON.parse(localStorage.getItem('invFree') || '{}');
+                            const pensionBalance = p.balance || Number(document.getElementById('invPensionBalance').value) || 0;
+                            const pensionMonthly = p.monthly || Number(document.getElementById('invPensionMonthly').value) || 0;
+                            const freeBalance = f.balance || Number(document.getElementById('invFreeBalance').value) || 0;
+                            const freeMonthly = f.monthly || Number(document.getElementById('invFreeMonthly').value) || 0;
+                            const totalBalance = pensionBalance + freeBalance;
+                            const totalMonthly = pensionMonthly + freeMonthly;
+                            const el = document.getElementById('investmentSummary');
+                            el.innerHTML = `
+                                <div class="mb-2"><strong>Samlet depot:</strong> ${fmt.format(totalBalance)}</div>
+                                <div class="mb-2"><strong>Samlet månedligt indskud:</strong> ${fmt.format(totalMonthly)}</div>
+                                <div class="text-xs text-gray-600">Pension: ${fmt.format(pensionBalance)} · ${fmt.format(pensionMonthly)} / md · Forv. afkast ${p.return || document.getElementById('invPensionReturn').value}%</div>
+                                <div class="text-xs text-gray-600">Frie investeringer: ${fmt.format(freeBalance)} · ${fmt.format(freeMonthly)} / md · Forv. afkast ${f.return || document.getElementById('invFreeReturn').value}% · Skat ${f.tax || document.getElementById('invFreeTax')?.value || 'n/a'}%</div>
+                            `;
+                        }
+
+                        // Simulation: monthly compounding, monthly fee, yearly tax or deferred tax
+                        function simulateSeries(start, monthly, years, rPct, feePct, taxPct, taxModel) {
+                            const months = Math.max(1, Math.round(years * MONTHS_PER_YEAR));
+                            const monthlyRate = (rPct / 100) / MONTHS_PER_YEAR;
+                            const monthlyFeeRate = (feePct / 100) / MONTHS_PER_YEAR;
+                            const series = [];
+                            let value = Number(start) || 0;
+                            let contributions = 0;
+                            let taxesPaid = 0;
+                            let feesPaid = 0;
+                            let lastYearEndValue = value;
+                            let contributionsThisYear = 0;
+
+                            for (let m = 1; m <= months; m++) {
+                                // growth
+                                const gain = value * monthlyRate;
+                                value += gain;
+                                // fee
+                                const fee = value * monthlyFeeRate;
+                                value -= fee;
+                                feesPaid += fee;
+                                // contribution at end of period
+                                value += monthly;
+                                contributions += monthly;
+                                contributionsThisYear += monthly;
+
+                                // annual tax event
+                                if (taxModel === 'annual' && m % 12 === 0) {
+                                    const gainThisYear = value - lastYearEndValue - contributionsThisYear;
+                                    const taxable = Math.max(0, gainThisYear);
+                                    const tax = taxable * (taxPct / 100);
+                                    if (tax > 0) {
+                                        value -= tax;
+                                        taxesPaid += tax;
+                                    }
+                                    lastYearEndValue = value;
+                                    contributionsThisYear = 0;
+                                }
+                                series.push(value);
+                            }
+
+                            // deferred tax at the end
+                            if (taxModel === 'deferred') {
+                                const gain = Math.max(0, value - contributions);
+                                const tax = gain * (taxPct / 100);
+                                if (tax > 0) {
+                                    value -= tax;
+                                    taxesPaid += tax;
+                                }
+                            }
+
+                            return { series, finalValue: value, contributions, taxesPaid, feesPaid };
+                        }
+
+                        function renderInvestmentChart(pSeries, fSeries, years) {
+                            const ctx = document.getElementById('investmentChart').getContext('2d');
+                            const labels = pSeries.map((_, i) => `M${i+1}`);
+                            if (investmentChartInstance) investmentChartInstance.destroy();
+                            investmentChartInstance = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels,
+                                    datasets: [
+                                        { label: 'Pension', data: pSeries, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.2 },
+                                        { label: 'Frie investeringer', data: fSeries, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.08)', tension: 0.2 }
+                                    ]
+                                },
+                                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: false } } }
+                            });
+                        }
+
+                        function renderInvestmentResults(pRes, fRes) {
+                            const el = document.getElementById('investmentResults');
+                            el.innerHTML = `
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="border rounded p-3">
+                                        <div class="text-sm font-medium mb-1">Pension</div>
+                                        <div>Indbetalt: ${fmt.format(pRes.contributions)}</div>
+                                        <div>Slutværdi: ${fmt.format(pRes.finalValue)}</div>
+                                        <div>Betalte gebyrer (est.): ${fmt.format(pRes.feesPaid)}</div>
+                                    </div>
+                                    <div class="border rounded p-3">
+                                        <div class="text-sm font-medium mb-1">Frie investeringer</div>
+                                        <div>Indbetalt: ${fmt.format(fRes.contributions)}</div>
+                                        <div>Slutværdi (efter skat): ${fmt.format(fRes.finalValue)}</div>
+                                        <div>Betalt skat (est.): ${fmt.format(fRes.taxesPaid)}</div>
+                                        <div>Betalte gebyrer (est.): ${fmt.format(fRes.feesPaid)}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+
+                        function runSimulationAndRender() {
+                            const pYears = 20; // default horizon for display
+                            const pStart = Number(document.getElementById('invPensionBalance').value) || 0;
+                            const pMonthly = Number(document.getElementById('invPensionMonthly').value) || 0;
+                            const pReturn = Number(document.getElementById('invPensionReturn').value) || 5;
+                            const pSim = simulateSeries(pStart, pMonthly, pYears, pReturn, 0.2, 0, 'deferred');
+
+                            const fYears = 20;
+                            const fStart = Number(document.getElementById('invFreeBalance').value) || 0;
+                            const fMonthly = Number(document.getElementById('invFreeMonthly').value) || 0;
+                            const fReturn = Number(document.getElementById('invFreeReturn').value) || 7;
+                            const fTax = Number(document.getElementById('invFreeTax').value) || 27;
+                            const fFee = Number(document.getElementById('invFreeFee').value) || 0.2;
+                            const fTaxModel = document.getElementById('invFreeTaxModel').value || 'annual';
+                            const fSim = simulateSeries(fStart, fMonthly, fYears, fReturn, fFee, fTax, fTaxModel);
+
+                            renderInvestmentChart(pSim.series, fSim.series, Math.max(pYears, fYears));
+                            renderInvestmentResults(pSim, fSim);
+                        }
+
+                        document.addEventListener('DOMContentLoaded', function(){
+                            document.getElementById('invSaveBtn').addEventListener('click', save);
+                            document.getElementById('invResetBtn').addEventListener('click', resetAll);
+                            load();
+                        });
+                    })();
+                </script>
+            </div>
+        </div>
+    </div>
+
+    <!-- Investment module removed — simulator simplified into inline UI -->
+    <script>
+        // --- GLOBAL STATE & UTILITIES ---
+        const TODAY = new Date();
+        TODAY.setHours(23, 59, 59, 999); // Set to end of today to include all of today's transactions
+
+        let balanceChartInstance, expenseChartInstance, debtPaymentChartInstance, budgetRuleChartInstance, incomeSourceChartInstance, investmentChartInstance;
+        let ALL_TRANSACTIONS = [];
+        let LONKONTO_TRANSACTIONS = [];
+        let BUDGET_TRANSACTIONS = [];
+        let BOLIGLAAN_TRANSACTIONS = [];
+        let AMORTIZATION_SCHEDULE = {}; // Will hold the parsed amortization data
+        let CURRENTLY_DISPLAYED_TRANSACTIONS = [];
+        let TOTAL_MONTHS = 0;
+        let LOAN_DATA = {};
+        let SHOW_AVERAGE_CHART = false; // false = show totals, true = show average per month
+        let mainTableSort = { column: 'date', direction: 'desc' }; // Initial sort for main table
+        const LOAN_TYPES = ['Realkreditlån', 'Boliglån'];
+        const formatCurrency = (value) => new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+
+        // --- NEW: Aktiedepot & Aktiesparekonto ---
+        let AKTIEDEPOT_BALANCE = 0;
+        let AKTIESPAREKONTO_BALANCE = 0;
+        function parseAktieCsv(rawData) {
+            if (!rawData) return 0;
+            const rows = rawData.trim().split(/\r?\n/);
+            if (rows.length < 2) return 0;
+            const header = rows[0].split(';').map(h => h.trim().toLowerCase());
+            const valueIdx = header.findIndex(h => h.includes('værdi dkk'));
+            if (valueIdx === -1) return 0;
+            return rows.slice(1).reduce((sum, line) => {
+                const parts = line.split(';');
+                const val = parseFloat(parts[valueIdx].replace(',', '.'));
+                return sum + (isNaN(val) ? 0 : val);
+            }, 0);
+        }
+
+        async function autoLoadAllFilesAndInitDashboard() {
+            // Fetch all CSVs as JSON from Node.js server
+            let loaded = {};
+            let loadSummary = [];
+            try {
+                const resp = await fetch('/data');
+                loaded = await resp.json();
+                for (const [key, text] of Object.entries(loaded)) {
+                    if (text && text.length > 0) {
+                        loadSummary.push(`<span class='text-green-600'>${key}.csv indlæst</span>`);
+                    } else {
+                        loadSummary.push(`<span class='text-red-600'>${key}.csv mangler</span>`);
+                    }
+                }
+            } catch (e) {
+                loadSummary.push(`<span class='text-red-600'>Fejl ved indlæsning af data</span>`);
+            }
+            const loadSummaryEl = document.getElementById('loadSummary');
+            if (loadSummaryEl) loadSummaryEl.innerHTML = loadSummary.join(' · ');
+
+            // Parse and wire up
+            LONKONTO_TRANSACTIONS = parseData(loaded.lonkonto);
+            BUDGET_TRANSACTIONS = parseData(loaded.budget);
+            BOLIGLAAN_TRANSACTIONS = parseData(loaded.boliglaan);
+            AMORTIZATION_SCHEDULE = loaded.amortization ? parseAmortizationData(loaded.amortization) : {};
+            AKTIEDEPOT_BALANCE = parseAktieCsv(loaded.aktiedepot);
+            AKTIESPAREKONTO_BALANCE = parseAktieCsv(loaded.aktiesparekonto);
+
+            // Build ALL_TRANSACTIONS
+            ALL_TRANSACTIONS = [...LONKONTO_TRANSACTIONS, ...BUDGET_TRANSACTIONS, ...BOLIGLAAN_TRANSACTIONS].filter(tx => tx.date <= TODAY);
+
+            // Show main dashboard content
+            const mainContentEl = document.getElementById('mainContent');
+            if (mainContentEl) mainContentEl.style.display = 'block';
+            // Initialize dashboard
+            initializeDashboard('', '', '', ''); // contents already loaded
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            autoLoadAllFilesAndInitDashboard();
+        });
+
+        // --- DATA PARSING & CATEGORIZATION ---
+        function parseData(rawData) {
+            if (!rawData) return [];
+            const rows = rawData.trim().split('\n').map(r => r.trim()).filter(Boolean);
+            if (rows.length === 0) return [];
+
+            // Detect separator from header line (support ; , or tab)
+            const headerLine = rows[0];
+            const separator = headerLine.includes(';') ? ';' : (headerLine.includes('\t') ? '\t' : (headerLine.includes(',') ? ',' : ';'));
+            const headers = headerLine.split(separator).map(h => h.trim().replace(/"/g, '').toLowerCase());
+
+            // Find important column indexes by common header names (Danish/English)
+            const dateIndex = headers.findIndex(h => /dato|date/.test(h));
+            const descIndex = headers.findIndex(h => /postering|beskrivelse|description|tekst|besked/.test(h));
+            const amountIndex = headers.findIndex(h => /bel[oø]b|amount|bel[oø]p/.test(h));
+            const balanceIndex = headers.findIndex(h => /saldo|balance/.test(h));
+
+            // Fallbacks if header names are unexpected
+            const idxDate = dateIndex === -1 ? 0 : dateIndex;
+            const idxDesc = descIndex === -1 ? 1 : descIndex;
+            const idxAmount = amountIndex === -1 ? 2 : amountIndex;
+            const idxBalance = balanceIndex === -1 ? 3 : balanceIndex;
+
+            const dataLines = rows.slice(1);
+            function tryParseDate(s) {
+                if (!s) return null;
+                const orig = String(s).replace(/"/g, '').trim();
+                // Normalize separators
+                const norm = orig.replace(/\./g, '-').replace(/\//g, '-').replace(/\s+/g, '');
+                const parts = norm.split('-');
+                try {
+                    if (parts.length === 3) {
+                        // dd-mm-yyyy or yyyy-mm-dd
+                        if (parts[2].length === 4) {
+                            // dd-mm-yyyy
+                            const day = parseInt(parts[0], 10);
+                            const month = parseInt(parts[1], 10) - 1;
+                            const year = parseInt(parts[2], 10);
+                            return new Date(Date.UTC(year, month, day));
+                        }
+                        if (parts[0].length === 4) {
+                            // yyyy-mm-dd
+                            const year = parseInt(parts[0], 10);
+                            const month = parseInt(parts[1], 10) - 1;
+                            const day = parseInt(parts[2], 10);
+                            return new Date(Date.UTC(year, month, day));
+                        }
+                    }
+                    // Last resort: let Date parse it (may be locale-dependent)
+                    const d = new Date(orig);
+                    if (!isNaN(d.getTime())) return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+                } catch (e) {}
+                return null;
+            }
+
+            function parseNumber(s) {
+                if (s === undefined || s === null) return NaN;
+                let t = String(s).replace(/\s+/g, '').replace(/"/g, '');
+                // Remove currency symbols
+                t = t.replace(/kr|dkk|€|\$/ig, '');
+                // If contains comma as decimal separator and dots as thousand, normalize
+                // e.g. 1.234,56 -> 1234.56
+                const hasComma = t.indexOf(',') !== -1;
+                const hasDot = t.indexOf('.') !== -1;
+                if (hasComma && hasDot) {
+                    t = t.replace(/\./g, '').replace(',', '.');
+                } else {
+                    // If only dots present, remove thousand separators (common in DK with dots)
+                    if (hasDot && !hasComma && /\.(?=\d{3})/.test(t)) t = t.replace(/\./g, '');
+                    // Replace comma with dot if comma looks like decimal
+                    if (hasComma && !hasDot) t = t.replace(',', '.');
+                }
+                // Remove non-numeric characters except minus and dot
+                t = t.replace(/[^0-9.-]/g, '');
+                return parseFloat(t);
+            }
+
+            return dataLines.map(line => {
+                const parts = line.split(separator).map(p => p.trim());
+                const dateStr = parts[idxDate];
+                const date = tryParseDate(dateStr);
+                const description = parts[idxDesc] || '';
+                const amount = parseNumber(parts[idxAmount]);
+                const balance = parseNumber(parts[idxBalance]);
+                if (!date || isNaN(amount) || isNaN(balance)) return null;
+                return { date, description, amount, balance };
+            }).filter(Boolean);
+        }
+        
+        function parseAmortizationData(csvData) {
+            const schedule = {};
+            const lines = csvData.trim().split('\n');
+            if (lines.length < 2) return schedule;
+
+            const separator = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
+            const header = lines[0].toLowerCase().split(separator).map(h => h.trim().replace(/"/g, ''));
+            
+            const dateIndex = header.findIndex(h => h === 'dato');
+            const renteIndex = header.findIndex(h => h === 'rente');
+            const bidragIndex = header.findIndex(h => h === 'bidrag');
+            const afdragIndex = header.findIndex(h => h === 'afdrag');
+            const restgaeldIndex = header.findIndex(h => h === 'restgaeld');
+
+            if ([dateIndex, renteIndex, bidragIndex, afdragIndex, restgaeldIndex].includes(-1)) {
+                console.error("Amortiserings-fil mangler påkrævede kolonner.");
+                document.getElementById('errorMessage').textContent = "Amortiserings-fil har forkert format. Tjek kolonnerne.";
+                return {};
+            }
+
+            lines.slice(1).forEach(line => {
+                const parts = line.split(separator);
+                if (parts.length < header.length) return;
+
+                const dateStr = parts[dateIndex];
+                const dateParts = dateStr.split('-');
+                if (dateParts.length !== 3) return;
+                
+                const day = parseInt(dateParts[0], 10);
+                const month = parseInt(dateParts[1], 10) - 1;
+                const year = parseInt(dateParts[2], 10);
+
+                if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                    const termDate = new Date(Date.UTC(year, month, day));
+                    const key = `${year}-${month}`;
+                    schedule[key] = {
+                        date: termDate,
+                        rente: parseFloat(parts[renteIndex]) || 0,
+                        bidrag: parseFloat(parts[bidragIndex]) || 0,
+                        afdrag: parseFloat(parts[afdragIndex]) || 0,
+                        restgaeld: parseFloat(parts[restgaeldIndex]) || 0
+                    };
+                }
+            });
+            return schedule;
+        }
+
+        function categorizeTransaction(text, amount) {
+            const lowerText = text.toLowerCase();
+            const categories = {
+                'Løn': { type: 'Income', loanType: null }, 'Aktiesalg': { type: 'Income', loanType: null }, 'Poker Gevinst': { type: 'Income', loanType: null }, 'Anden Indkomst': { type: 'Income', loanType: null }, 'Intern overførsel': { type: 'Internal', loanType: null },
+                'Ejerforening': { type: 'Need', loanType: null }, 'SU-Lån': { type: 'Need', loanType: 'SU-Lån' }, 'Forsikring m.m.': { type: 'Need', loanType: null },
+                'Realkreditlån': { type: 'Need', loanType: 'Realkreditlån' }, 'El': { type: 'Need', loanType: null }, 'Boliglån': { type: 'Need', loanType: 'Boliglån' },
+                'Husleje': { type: 'Need', loanType: null }, 'Transport': { type: 'Need', loanType: null }, 'Medicin': { type: 'Need', loanType: null },
+                'Dagligvarer': { type: 'Need', loanType: null }, 'Telefon/internet': { type: 'Need', loanType: null }, 'Tandlæge': { type: 'Need', loanType: null },
+                'Advokat': { type: 'Need', loanType: null }, 'Rente/gebyr': { type: 'Need', loanType: null },
+                'Opsparing/Afdrag': { type: 'Future', loanType: null }, 'Aktiekøb': { type: 'Future', loanType: null },
+                'Gym': { type: 'Want', loanType: null }, 'Velgørenhed': { type: 'Want', loanType: null }, 'Diverse bolig': { type: 'Want', loanType: null },
+                'Mobilepay': { type: 'Want', loanType: null }, 'Restaurant': { type: 'Want', loanType: null }, 'Biograf': { type: 'Want', loanType: null },
+                'Streaming': { type: 'Want', loanType: null }, 'Playstation': { type: 'Want', loanType: null }, 'Læring': { type: 'Want', loanType: null },
+                'Frisør': { type: 'Want', loanType: null }, 'Cykel': { type: 'Want', loanType: null }, 'Poker': { type: 'Want', loanType: null },
+                'Gaver': { type: 'Want', loanType: null }, 'Byen': { type: 'Want', loanType: null }, 
+                'Tøj': { type: 'Want', loanType: null }, 'Boligindretning': { type: 'Want', loanType: null }, 'Skønhed': { type: 'Want', loanType: null },
+                'Kosttilskud': { type: 'Want', loanType: null }, '4GladePoter': { type: 'Want', loanType: null }, 'Lønkorrektion': { type: 'Want', loanType: null },
+                'Diverse': { type: 'Want', loanType: null }
+            };
+            const rules = [
+                // Income Rules
+                { test: (t, a) => a > 0 && (t.includes('løn') || t.includes('lønoverførsel')), cat: 'Løn' },
+                { test: (t, a) => a > 0 && (t.includes('aktier') || t.includes('nordnet') || t.includes('saxo') || t.includes('advis')), cat: 'Aktiesalg' },
+                { test: (t, a) => a > 0 && (t.includes('poker') || t.includes('danskespil')), cat: 'Poker Gevinst' },
+                { test: (t, a) => a > 0 && (t.includes('overført fra') || t.includes('fra9286kto1930061863') || t.includes('daniel bækgaard')), cat: 'Intern overførsel' },
+                { test: (t, a) => a > 0, cat: 'Anden Indkomst' },
+                
+                // Expense Rules
+                { test: (t, a) => a < 0 && (t.includes('aktier') || t.includes('nordnet') || t.includes('saxo') || t.includes('advis')), cat: 'Aktiekøb' },
+                { test: (t, a) => a < 0 && (t.includes('poker') || t.includes('danskespil')), cat: 'Poker' },
+                { test: t => t.includes('ejerforening'), cat: 'Ejerforening' }, { test: t => t.includes('studiegæld'), cat: 'SU-Lån' },
+                { test: t => t.includes('a-kasse') || t.includes('privatsikring') || t.includes('sygeforsikringen') || t.includes('djøf') || t.includes('codan'), cat: 'Forsikring m.m.' },
+                { test: t => t.includes('gym') || t.includes('gigantium'), cat: 'Gym' }, { test: t => t.includes('totalkredit'), cat: 'Realkreditlån' },
+                { test: t => t.includes('strøm'), cat: 'El' }, { test: t => t.includes('lån 16411') || t.includes('afdrag boliglån') || t.includes('rente af gæld'), cat: 'Boliglån' },
+                { test: t => t.includes('børns vilkår') || t.includes('folkekirkens'), cat: 'Velgørenhed' },
+                { test: t => t.includes('overført fra') || t.includes('overførsel') || t.includes('overført 164') || t.includes('budget - lån') || t.includes('til 9070 1640222901') || t.includes('daniel bækgaard') || t.includes('til budgetkonto') || t === "fra9286kto1930061863" || t === "til 9312 0000814245" || t === "til boliglån", cat: 'Intern overførsel' },
+                { test: t => t.includes('lejerbo'), cat: 'Husleje' }, { test: t => t.includes('overført køb 1640865675') || t.includes('egenbetaling hus'), cat: 'Opsparing/Afdrag' },
+                { test: t => t.includes('steenfeldt service'), cat: 'Diverse bolig' }, { test: t => t.includes('rejsekort') || t.includes('dsb'), cat: 'Transport' },
+                { test: t => t.includes('mobilepay'), cat: 'Mobilepay' }, { test: t => t.includes('apotek') || t.includes('aalborghus apot'), cat: 'Medicin' },
+                { test: t => t.includes('doravej anno 2022') || t.includes('coop365') || t.includes('netto') || t.includes('meny kennedy') || t.includes('føtex') || t.includes('rema') || t.includes('spar gug') || t.includes('super brugsen') || t.includes('kvickly') || t.includes('foetex') || t.includes('superb vejgaard') || t.includes('lidl') || t.includes('7-eleven') || t.includes('doravej'), cat: 'Dagligvarer' },
+                { test: t => t.includes('cafe') || t.includes('paolopza') || t.includes('poelsedrengene') || t.includes('streetfood') || t.includes('risto'), cat: 'Restaurant' },
+                { test: t => t.includes('nordisk film') || t.includes('nfb'), cat: 'Biograf' }, { test: t => t.includes('relatel'), cat: 'Telefon/internet' },
+                { test: t => t.includes('norlys') || t.includes('prime video') || t.includes('disney') || t.includes('netflix') || t.includes('allente'), cat: 'Streaming' },
+                { test: t => t.includes('playstation'), cat: 'Playstation' }, { test: t => t.includes('gebyr') || t.includes('rente'), cat: 'Rente/gebyr' },
+                { test: t => t.includes('udemy'), cat: 'Læring' }, { test: t => t.includes('my & holger'), cat: 'Frisør' },
+                { test: t => t.includes('cykel') || t.includes('cykle'), cat: 'Cykel' },
+                { test: t => t.includes('br algade') || t.includes('boghandel') || t.includes('skjold burne'), cat: 'Gaver' },
+                { test: t => t.includes('sprutten aalborg') || t.includes('under buret') || t.includes('hugo') || t.includes('john bull') || t.includes('borgergade 2') || t.includes('seaport') || t.includes('den nordjyske ambassade') || t.includes('proud mar') || t.includes('musik') || t.includes('partyking'), cat: 'Byen' },
+                { test: t => t.includes('zalando') || t.includes('sport 24') || t.includes('salling') || t.includes('m and m direct limited') || t.includes('snt') || t.includes('MAGASIN DU NORD') || t.includes('janne k. kolding aps'), cat: 'Tøj' },
+                { test: t => t.includes('bauhaus') || t.includes('ikea') || t.includes('silvan') || t.includes('my home') || t.includes('av-cables'), cat: 'Boligindretning' },
+                { test: t => t.includes('matas') || t.includes('normal'), cat: 'Skønhed' }, { test: t => t.includes('tandl'), cat: 'Tandlæge' },
+                { test: t => t.includes('bulk') || t.includes('musclehouse'), cat: 'Kosttilskud' }, { test: t => t.includes('advokat'), cat: 'Advokat' },
+                { test: t => t.includes('4gladepoter') || t.includes('wordpress'), cat: '4GladePoter' }, { test: t => t.includes('løn'), cat: 'Lønkorrektion' },
+            ];
+            for (const rule of rules) {
+                if (rule.test(lowerText, amount)) {
+                    const catInfo = categories[rule.cat];
+                    return { name: rule.cat, type: catInfo?.type || 'Want', loanType: catInfo?.loanType || null };
+                }
+            }
+            return { name: 'Diverse', type: 'Want', loanType: null };
+        }
+
+        function filterPairedTransfers(transactions) {
+            const groupedByDateAndAmount = transactions.reduce((acc, tx) => {
+                const key = `${tx.date.toISOString().split('T')[0]}|${Math.abs(tx.amount).toFixed(2)}`;
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(tx);
+                return acc;
+            }, {});
+
+            const transactionsToRemove = new Set();
+            Object.values(groupedByDateAndAmount).forEach(group => {
+                const positives = group.filter(t => t.amount > 0);
+                const negatives = group.filter(t => t.amount < 0);
+                const pairs = Math.min(positives.length, negatives.length);
+
+                for (let i = 0; i < pairs; i++) {
+                    transactionsToRemove.add(positives[i]);
+                    transactionsToRemove.add(negatives[i]);
+                }
+            });
+
+            return transactions.filter(tx => !transactionsToRemove.has(tx));
+        }
+
+        // --- FINANCIAL CALCULATIONS ---
+        function getFinancialSummary(transactions) {
+            const totalIncome = transactions.filter(t => t.category.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
+            let needsTotal = 0, wantsTotal = 0, futureTotal = 0;
+
+            transactions.forEach(tx => {
+                if (tx.amount >= 0 || tx.category.type === 'Internal') return;
+                const amount = Math.abs(tx.amount);
+
+                if (tx.category.loanType === 'Realkreditlån') {
+                    const dateKey = `${tx.date.getUTCFullYear()}-${tx.date.getUTCMonth()}`;
+                    const amortizationTerm = AMORTIZATION_SCHEDULE[dateKey];
+                    
+                    if (amortizationTerm) {
+                        const cost = amortizationTerm.rente + amortizationTerm.bidrag;
+                        const principal = amortizationTerm.afdrag;
+                        needsTotal += cost;
+                        futureTotal += principal;
+                    } else {
+                        futureTotal += amount; 
+                    }
+                } else if (tx.category.loanType === 'Boliglån') {
+                    const interestForMonth = BOLIGLAAN_TRANSACTIONS
+                        .filter(blTx => blTx.date.getUTCFullYear() === tx.date.getUTCFullYear() && blTx.date.getUTCMonth() === tx.date.getUTCMonth() && blTx.description.toLowerCase().includes('rente af gæld'))
+                        .reduce((sum, blTx) => sum + Math.abs(blTx.amount), 0);
+                    
+                    const principalPayment = amount - interestForMonth;
+                    needsTotal += interestForMonth;
+                    futureTotal += principalPayment;
+                }
+                else if (tx.category.loanType) { // For other loans like SU-lån
+                     const loanInfo = LOAN_DATA[tx.category.loanType];
+                    if (!loanInfo || loanInfo.debt <= 0 || loanInfo.rate <= 0) {
+                        futureTotal += amount;
+                    } else {
+                        const monthlyInterestRate = (loanInfo.rate / 100) / 12;
+                        const costForPeriod = loanInfo.debt * monthlyInterestRate;
+                        const principalPayment = Math.max(0, amount - costForPeriod);
+                        needsTotal += costForPeriod;
+                        futureTotal += principalPayment;
+                    }
+                }
+                else {
+                    switch (tx.category.type) {
+                        case 'Need': needsTotal += amount; break;
+                        case 'Want': wantsTotal += amount; break;
+                        case 'Future': futureTotal += amount; break;
+                    }
+                }
+            });
+            
+            const totalSpending = needsTotal + wantsTotal + futureTotal;
+            const netFlow = totalIncome - totalSpending;
+            const savingsRate = totalIncome > 0 ? (futureTotal / totalIncome) * 100 : 0;
+            
+            return { totalIncome, totalSpending, netFlow, savingsRate, needsTotal, wantsTotal, futureTotal };
+        }
+
+        // --- UI & DASHBOARD UPDATES ---
+        function updateDashboard(transactions, title, isFilterActive = false) {
+            CURRENTLY_DISPLAYED_TRANSACTIONS = transactions;
+            const resetFilterBtnContainer = document.getElementById('resetFilterBtnContainer');
+            if (resetFilterBtnContainer) resetFilterBtnContainer.style.display = isFilterActive ? 'block' : 'none';
+            
+            const summary = getFinancialSummary(transactions);
+
+            updateKeyMetrics(summary, transactions);
+            updateVisualizations(transactions, title, summary);
+            updateAverageSpendingTable(transactions, isFilterActive);
+            updateDebtChartsAndDetails(transactions);
+            updateFiTracker();
+        }
+
+        function calculateMonthsInPeriod(transactions) {
+            if (transactions.length === 0) return 1;
+            const dates = transactions.map(t => t.date);
+            const firstDate = new Date(Math.min.apply(null, dates));
+            const lastDate = new Date(Math.max.apply(null, dates));
+            const months = (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + (lastDate.getMonth() - firstDate.getMonth()) + 1;
+            return Math.max(1, months);
+        }
+
+        function updateKeyMetrics(summary, transactions) {
+            const elTotalIncome = document.getElementById('totalIncome');
+            if (elTotalIncome) elTotalIncome.textContent = formatCurrency(summary.totalIncome);
+            const elTotalSpending = document.getElementById('totalSpending');
+            if (elTotalSpending) elTotalSpending.textContent = formatCurrency(-summary.totalSpending);
+            const netFlowEl = document.getElementById('netFlow');
+            if (netFlowEl) {
+                netFlowEl.textContent = formatCurrency(summary.netFlow);
+                netFlowEl.className = `text-2xl font-bold ${summary.netFlow >= 0 ? 'text-green-600' : 'text-red-600'}`;
+            }
+            const savingsRateEl = document.getElementById('savingsRate');
+            if (savingsRateEl) {
+                savingsRateEl.textContent = `${summary.savingsRate.toFixed(1)}%`;
+                savingsRateEl.className = `text-2xl font-bold ${summary.savingsRate >= 0 ? 'text-green-600' : 'text-red-600'}`;
+            }
+
+            const monthsInPeriod = calculateMonthsInPeriod(transactions);
+            const elAvgIncome = document.getElementById('avgIncome');
+            if (elAvgIncome) elAvgIncome.textContent = formatCurrency(summary.totalIncome / monthsInPeriod);
+            const avgSpending = summary.totalSpending / monthsInPeriod;
+            const avgFutureSpending = summary.futureTotal / monthsInPeriod;
+            const elAvgSpending = document.getElementById('avgSpending');
+            if (elAvgSpending) elAvgSpending.textContent = formatCurrency(avgSpending);
+            const elAvgSpendingBreakdown = document.getElementById('avgSpendingBreakdown');
+            if (elAvgSpendingBreakdown) elAvgSpendingBreakdown.textContent = `(heraf ${formatCurrency(avgFutureSpending)} til Fremtid)`;
+        }
+
+        function updateVisualizations(transactions, title, summary) {
+            updateIncomeOverview(transactions);
+            updateBudgetRuleChart(summary);
+            updateExpenseBreakdownChart(transactions);
+            updateTransactionsTable(transactions, title);
+        }
+
+        // Note: avg/total toggle is now folded into updateExpenseBreakdownChart
+
+        function updateIncomeOverview(transactions) {
+            const incomeTransactions = transactions.filter(tx => tx.category.type === 'Income');
+            const incomeSources = incomeTransactions.reduce((acc, tx) => {
+                acc[tx.category.name] = (acc[tx.category.name] || 0) + tx.amount;
+                return acc;
+            }, {});
+
+            if (incomeSourceChartInstance) incomeSourceChartInstance.destroy();
+            const incomeCtx = document.getElementById('incomeSourceChart').getContext('2d');
+            incomeSourceChartInstance = new Chart(incomeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(incomeSources),
+                    datasets: [{
+                        data: Object.values(incomeSources),
+                        backgroundColor: ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef4444'],
+                        hoverOffset: 4
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { padding: 15 } } } }
+            });
+
+            const incomeTableBody = document.getElementById('incomeSummaryTable');
+            incomeTableBody.innerHTML = '';
+            Object.entries(incomeSources).sort(([,a],[,b]) => b-a).forEach(([category, total]) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-800">${category}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-medium text-green-600">${formatCurrency(total)}</td>
+                `;
+                incomeTableBody.appendChild(row);
+            });
+        }
+
+        function updateBudgetRuleChart(summary) {
+            if (budgetRuleChartInstance) budgetRuleChartInstance.destroy();
+            const budgetCtx = document.getElementById('budgetRuleChart').getContext('2d');
+            budgetRuleChartInstance = new Chart(budgetCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Nødvendigt', 'Fornøjelse', 'Fremtid'],
+                    datasets: [{
+                        data: [summary.needsTotal, summary.wantsTotal, summary.futureTotal],
+                        backgroundColor: ['#3b82f6', '#f97316', '#22c55e'],
+                        hoverOffset: 4
+                    }]
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, 
+                    plugins: { legend: { display: false } },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const clickedIndex = elements[0].index;
+                            const typeMap = { 0: 'Need', 1: 'Want', 2: 'Future' };
+                            const typeNameMap = { 0: 'Nødvendigt', 1: 'Fornøjelse', 2: 'Fremtid' };
+                            const clickedType = typeMap[clickedIndex];
+                            const clickedTypeName = typeNameMap[clickedIndex];
+                            
+                            const periodTransactions = getCurrentPeriodTransactions();
+                            const filteredTx = periodTransactions.filter(tx => {
+                                if (tx.amount >= 0) return false;
+                                if (clickedType === 'Future') {
+                                    return tx.category.type === 'Future' || tx.category.loanType;
+                                }
+                                return tx.category.type === clickedType && !tx.category.loanType;
+                            });
+                            
+                            updateDashboard(filteredTx, `Filter: ${clickedTypeName}`, true);
+                        }
+                    }
+                }
+            });
+            const budgetDetails = document.getElementById('budgetRuleDetails');
+            budgetDetails.innerHTML = `
+                <div class="flex justify-between items-center"><span class="flex items-center"><span class="w-3 h-3 rounded-full bg-blue-500 mr-2"></span>Nødvendigt:</span> <span class="font-medium">${formatCurrency(summary.needsTotal)}</span></div>
+                <div class="flex justify-between items-center"><span class="flex items-center"><span class="w-3 h-3 rounded-full bg-orange-500 mr-2"></span>Fornøjelse:</span> <span class="font-medium">${formatCurrency(summary.wantsTotal)}</span></div>
+                <div class="flex justify-between items-center"><span class="flex items-center"><span class="w-3 h-3 rounded-full bg-green-500 mr-2"></span>Fremtid:</span> <span class="font-medium">${formatCurrency(summary.futureTotal)}</span></div>
+            `;
+        }
+
+        function updateExpenseBreakdownChart(transactions) {
+            const expenseCategories = transactions
+                .filter(t => t.amount < 0 && t.category.type !== 'Internal')
+                .reduce((acc, t) => {
+                    const name = t.category.name;
+                    acc[name] = (acc[name] || 0) + Math.abs(t.amount);
+                    return acc;
+                }, {});
+            // Compute possible Realkredit afdrag totals for the current period to show in tooltip
+            let realAfdragTotal = 0;
+            if (AMORTIZATION_SCHEDULE && Object.keys(AMORTIZATION_SCHEDULE).length) {
+                const periodDates = transactions.length ? { start: new Date(Math.min(...transactions.map(t => t.date.getTime()))), end: new Date(Math.max(...transactions.map(t => t.date.getTime()))) } : null;
+                Object.values(AMORTIZATION_SCHEDULE).forEach(term => {
+                    if (!term || !term.date) return;
+                    if (periodDates) {
+                        if (term.date < periodDates.start || term.date > periodDates.end) return;
+                    }
+                    realAfdragTotal += term.afdrag || 0;
+                });
+            } else {
+                const rkTx = transactions.filter(t => t.amount < 0 && t.category && t.category.loanType === 'Realkreditlån');
+                rkTx.forEach(tx => realAfdragTotal += Math.abs(tx.amount));
+            }
+
+            if (expenseChartInstance) expenseChartInstance.destroy();
+            const expenseCtx = document.getElementById('expenseChart').getContext('2d');
+            const sortedCategories = Object.entries(expenseCategories).sort(([,a],[,b]) => b-a).slice(0, 15);
+            // Determine months in period for averaging if needed
+            const monthsInPeriod = Math.max(1, calculateMonthsInPeriod(transactions));
+            const sorted = sortedCategories;
+            // Prepare display values (either totals or average per month)
+            const labels = sorted.map(([key]) => key);
+            const rawValues = sorted.map(([, value]) => value);
+            const displayValues = rawValues.map(v => SHOW_AVERAGE_CHART ? (v / monthsInPeriod) : v);
+
+            expenseChartInstance = new Chart(expenseCtx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: SHOW_AVERAGE_CHART ? 'Gns./md.' : 'Forbrug',
+                        data: displayValues,
+                        backgroundColor: '#8b5cf6',
+                    }]
+                },
+                options: { 
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false, 
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    let out = `${label}: ${formatCurrency(value)}`;
+                                    // Show Afdrag in tooltip (avg or total depending on mode)
+                                    const displayAfdrag = SHOW_AVERAGE_CHART ? (realAfdragTotal / monthsInPeriod) : realAfdragTotal;
+                                    if (label && label.toLowerCase().includes('realkredit')) {
+                                        out += ` (Afdrag: ${formatCurrency(displayAfdrag)})`;
+                                    }
+                                    return out;
+                                }
+                            }
+                        }
+                    },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const clickedCategory = expenseChartInstance.data.labels[elements[0].index];
+                             const periodTransactions = getCurrentPeriodTransactions();
+                            const filteredTx = periodTransactions.filter(tx => tx.category.name === clickedCategory);
+                            updateDashboard(filteredTx, `Filter: ${clickedCategory}`, true);
+                        }
+                    }
+                }
+            });
+            const totalDisplayExpenses = Object.values(expenseCategories).reduce((sum, v) => sum + v, 0);
+            const shownTotal = SHOW_AVERAGE_CHART ? (totalDisplayExpenses / monthsInPeriod) : totalDisplayExpenses;
+            const labelText = SHOW_AVERAGE_CHART ? 'Gns./md.:' : 'Total:';
+            document.getElementById('totalExpenses').innerHTML = `${labelText} <strong>${formatCurrency(-shownTotal)}</strong>`;
+        }
+        
+        function updateAverageSpendingTable(transactions, isFilterActive) {
+            // If the average table was removed from the UI, do nothing
+            const avgTableBody = document.getElementById('averageSpendingTable');
+            const titleEl = document.getElementById('avg-spending-title');
+            if (!avgTableBody) {
+                if (titleEl) titleEl.textContent = isFilterActive ? "Gns. Forbrug (Filtreret)" : "Gns. Månedligt Forbrug";
+                return;
+            }
+            titleEl.textContent = isFilterActive ? "Gns. Forbrug (Filtreret)" : "Gns. Månedligt Forbrug";
+            avgTableBody.innerHTML = '';
+            
+            const spendingCategories = transactions
+                .filter(t => t.amount < 0 && t.category.type !== 'Internal')
+                .reduce((acc, t) => {
+                    const name = t.category.name;
+                    acc[name] = (acc[name] || 0) + Math.abs(t.amount);
+                    return acc;
+                }, {});
+
+            const monthsInPeriod = isFilterActive ? 1 : TOTAL_MONTHS;
+
+            Object.entries(spendingCategories)
+                .sort(([,a],[,b]) => b-a)
+                .forEach(([category, total]) => {
+                    const average = total / monthsInPeriod;
+                    const row = document.createElement('tr');
+                    row.className = 'clickable-row';
+                    row.dataset.categoryName = category;
+                    row.innerHTML = `<td class="px-4 py-2 whitespace-nowrap text-sm text-gray-800">${category}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-right font-medium text-gray-600">${formatCurrency(average)}</td>`;
+                    avgTableBody.appendChild(row);
+                });
+            
+            document.querySelectorAll('#averageSpendingTable .clickable-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const categoryName = row.dataset.categoryName;
+                    const periodTransactions = getCurrentPeriodTransactions();
+                    const filteredTx = periodTransactions.filter(tx => tx.category.name === categoryName);
+                    updateDashboard(filteredTx, `Filter: ${categoryName}`, true);
+                });
+            });
+        }
+
+        function updateTransactionsTable(transactions, title) {
+            const tableBody = document.getElementById('transactionsTable');
+            tableBody.innerHTML = '';
+            document.getElementById('transactionsTitle').textContent = title;
+
+            // Sort before rendering
+            const sortedTransactions = [...transactions].sort((a, b) => {
+                if (mainTableSort.column === 'amount') {
+                    return mainTableSort.direction === 'desc' ? b.amount - a.amount : a.amount - b.amount;
+                }
+                // Default sort by date
+                return mainTableSort.direction === 'desc' ? b.date - a.date : a.date - b.date;
+            });
+
+            sortedTransactions.forEach(tx => {
+                const row = document.createElement('tr');
+                const amountColor = tx.amount < 0 ? 'text-red-600' : 'text-green-600';
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.date.toLocaleDateString('da-DK')}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${tx.description}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.category.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${amountColor}">${formatCurrency(tx.amount)}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        function updateDebtChartsAndDetails(transactions) {
+            let totalCost = 0;
+            let totalPrincipal = 0;
+            const transactionsUntilToday = transactions.filter(t => t.date <= TODAY);
+
+            transactionsUntilToday.filter(tx => tx.category.loanType).forEach(tx => {
+                 if (tx.category.loanType === 'Realkreditlån') {
+                    const dateKey = `${tx.date.getUTCFullYear()}-${tx.date.getUTCMonth()}`;
+                    const term = AMORTIZATION_SCHEDULE[dateKey];
+                    if(term) {
+                        totalCost += term.rente + term.bidrag;
+                        totalPrincipal += term.afdrag;
+                    } else {
+                        totalPrincipal += Math.abs(tx.amount);
+                    }
+                 } else if (tx.category.loanType === 'Boliglån') {
+                    const interestForMonth = BOLIGLAAN_TRANSACTIONS
+                        .filter(blTx => blTx.date.getUTCFullYear() === tx.date.getUTCFullYear() && blTx.date.getUTCMonth() === tx.date.getUTCMonth() && blTx.description.toLowerCase().includes('rente af gæld'))
+                        .reduce((sum, blTx) => sum + Math.abs(blTx.amount), 0);
+                    
+                    totalCost += interestForMonth;
+                    totalPrincipal += Math.abs(tx.amount) - interestForMonth;
+
+                 } else { // Fallback for other loans
+                    totalPrincipal += Math.abs(tx.amount);
+                 }
+            });
+
+             if (debtPaymentChartInstance) debtPaymentChartInstance.destroy();
+             const debtCtx = document.getElementById('debtPaymentChart').getContext('2d');
+             debtPaymentChartInstance = new Chart(debtCtx, {
+                 type: 'bar',
+                 data: {
+                     labels: ['Lån i alt'],
+                     datasets: [
+                         { label: 'Omkostninger (Rente+Bidrag)', data: [totalCost], backgroundColor: '#ef4444' },
+                         { label: 'Afdrag', data: [totalPrincipal], backgroundColor: '#22c55e' }
+                     ]
+                 },
+                 options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+             });
+            const debtDetailsContainer = document.getElementById('debtCalculationDetails');
+            if (debtDetailsContainer) {
+                debtDetailsContainer.innerHTML = `
+                    <div class="p-2 bg-gray-50 rounded-md">
+                        <p class="font-semibold text-gray-700">Lån i perioden</p>
+                        <div class="flex justify-between"><span>Total Ydelse:</span> <span>${formatCurrency(totalCost + totalPrincipal)}</span></div>
+                        <div class="flex justify-between"><span>- Beregnet Omkostning:</span> <span class="text-red-600">${formatCurrency(totalCost)}</span></div>
+                        <div class="flex justify-between border-t mt-1 pt-1"><span>= Beregnet Afdrag:</span> <span class="font-bold text-green-600">${formatCurrency(totalPrincipal)}</span></div>
+                    </div>`;
+            }
+        }
+
+        function updateFiTracker() {
+            const annualSpendingGoal = parseFloat(document.getElementById('fiAnnualSpending').value) || 0;
+            // Use aktiedepot + aktiesparekonto for current investments
+            const currentInvestments = AKTIEDEPOT_BALANCE + AKTIESPAREKONTO_BALANCE;
+            const homeValue = parseFloat(document.getElementById('fiHomeValue').value) || 0;
+            const pensionValue = parseFloat(document.getElementById('fiPension').value) || 0;
+            const totalDebt = Object.values(LOAN_DATA).reduce((sum, loan) => sum + loan.debt, 0);
+            const totalAssets = currentInvestments + homeValue + pensionValue;
+            const netWorth = totalAssets - totalDebt;
+            const fiNumber = annualSpendingGoal * 25;
+            const progress = fiNumber > 0 ? (netWorth / fiNumber) * 100 : 0;
+            const fiNumberEl = document.getElementById('fiNumber');
+            if (fiNumberEl) fiNumberEl.textContent = `Mål: ${formatCurrency(fiNumber)}`;
+            const progressBar = document.getElementById('fiProgressBar');
+            if (progressBar) {
+                progressBar.style.width = `${Math.max(0, Math.min(progress, 100))}%`;
+                progressBar.textContent = `${progress.toFixed(1)}%`;
+            }
+            const summaryEl = document.getElementById('fiSummary');
+            if (summaryEl) {
+                summaryEl.innerHTML = `
+                    <div class="flex justify-between"><span>Samlede aktiver:</span> <span class="font-medium">${formatCurrency(totalAssets)}</span></div>
+                    <div class="flex justify-between"><span>Samlet gæld:</span> <span class="font-medium text-red-600">${formatCurrency(-totalDebt)}</span></div>
+                    <div class="flex justify-between border-t pt-1 mt-1 font-bold"><span>Nettoformue:</span> <span>${formatCurrency(netWorth)}</span></div>
+                `;
+            }
+        }
+        
+        function generateInsights(summary) {
+            const insights = [];
+            insights.push(`Din opsparingsrate er <strong>${summary.savingsRate.toFixed(1)}%</strong>. En rate over 15-20% er et stærkt tegn på god økonomisk sundhed.`);
+            const needsPercent = summary.totalIncome > 0 ? (summary.needsTotal / summary.totalIncome) * 100 : 0;
+            insights.push(needsPercent > 50 ? `Dine 'Needs' udgør <strong>${needsPercent.toFixed(1)}%</strong> af din indkomst, hvilket er over de anbefalede 50%. Overvej om der er faste udgifter, der kan reduceres.` : `Dine 'Needs' er på <strong>${needsPercent.toFixed(1)}%</strong>, hvilket er inden for 50/30/20-modellens rammer. Godt gået!`);
+            const wantsPercent = summary.totalIncome > 0 ? (summary.wantsTotal / summary.totalIncome) * 100 : 0;
+            if (wantsPercent > 30) {
+                insights.push(`Dit 'Want'-forbrug er på <strong>${wantsPercent.toFixed(1)}%</strong>. Dette er et område, hvor der ofte kan findes besparelser.`);
+            }
+            const totalLoanCost = getFinancialSummary(ALL_TRANSACTIONS, LOAN_DATA).needsTotal - ALL_TRANSACTIONS.filter(tx => tx.category.type === 'Need' && !tx.category.loanType).reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+            if (totalLoanCost > 0) {
+                insights.push(`Du har betalt ca. <strong>${formatCurrency(totalLoanCost)}</strong> i låneomkostninger i perioden. Overvej om ekstraordinære afdrag kan være en god investering.`);
+            }
+            const insightsList = document.getElementById('insightsList');
+            if (insightsList) insightsList.innerHTML = insights.map(insight => `<li class="flex items-start"><span class="text-green-500 mr-2 mt-1">✓</span><span>${insight}</span></li>`).join('');
+        }
+
+        // --- INITIAL SETUP & EVENT LISTENERS ---
+        function initializeDashboard(lonkontoContent, budgetContent, boliglaanContent, amortizationContent) {
+            if (amortizationContent) {
+                AMORTIZATION_SCHEDULE = parseAmortizationData(amortizationContent);
+            }
+            // No need to call autoLoadInvestmentFiles (Node.js loads all files)
+            // Keep all parsed transactions (including future-dated rows) so we can
+            // use the latest available data for balances/loans. We'll limit
+            // cashflow arrays to <= TODAY when building ALL_TRANSACTIONS below.
+            LONKONTO_TRANSACTIONS = parseData(lonkontoContent);
+            BUDGET_TRANSACTIONS = parseData(budgetContent);
+            BOLIGLAAN_TRANSACTIONS = boliglaanContent ? parseData(boliglaanContent) : [];
+
+            // Diagnostic: report counts and last parsed dates for each file
+            try {
+                const fmtDate = d => d ? `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}` : 'n/a';
+                const maxDate = arr => arr && arr.length ? new Date(Math.max.apply(null, arr.map(t=>t.date.getTime()))) : null;
+                const lonMax = maxDate(LONKONTO_TRANSACTIONS);
+                const budMax = maxDate(BUDGET_TRANSACTIONS);
+                const boligMax = maxDate(BOLIGLAAN_TRANSACTIONS);
+                console.log('Parsed counts:', { lon: LONKONTO_TRANSACTIONS.length, bud: BUDGET_TRANSACTIONS.length, bolig: BOLIGLAAN_TRANSACTIONS.length });
+                console.log('Latest dates (UTC):', { lon: fmtDate(lonMax), bud: fmtDate(budMax), bolig: fmtDate(boligMax), today: fmtDate(TODAY) });
+                const summaryEl = document.getElementById('loadSummary');
+                if(summaryEl) summaryEl.textContent = `Parsed: lønkonto ${LONKONTO_TRANSACTIONS.length} (last ${fmtDate(lonMax)}), budget ${BUDGET_TRANSACTIONS.length} (last ${fmtDate(budMax)}), boliglån ${BOLIGLAAN_TRANSACTIONS.length} (last ${fmtDate(boligMax)})`;
+            } catch (e) { console.warn('Diagnostic logging failed', e); }
+            
+            // Sort individual transaction arrays to ensure correct 'last transaction' logic
+            LONKONTO_TRANSACTIONS.sort((a, b) => a.date - b.date);
+            BUDGET_TRANSACTIONS.sort((a, b) => a.date - b.date);
+            BOLIGLAAN_TRANSACTIONS.sort((a, b) => a.date - b.date);
+
+            // For cashflow/transaction lists we only want entries up to TODAY
+            const combinedCashFlowTransactions = filterPairedTransfers([
+                ...LONKONTO_TRANSACTIONS.filter(tx => tx.date <= TODAY),
+                ...BUDGET_TRANSACTIONS.filter(tx => tx.date <= TODAY)
+            ]);
+            ALL_TRANSACTIONS = [...combinedCashFlowTransactions].sort((a, b) => a.date - b.date);
+
+            if (ALL_TRANSACTIONS.length === 0) {
+                const errorMessageEl = document.getElementById('errorMessage');
+                if (errorMessageEl) errorMessageEl.textContent = 'Kunne ikke indlæse gyldige transaktioner fra filerne. Tjek formatet.';
+                return;
+            }
+
+            ALL_TRANSACTIONS.forEach(tx => { tx.category = categorizeTransaction(tx.description, tx.amount); });
+            
+            const firstDate = ALL_TRANSACTIONS[0].date;
+            const lastDate = ALL_TRANSACTIONS[ALL_TRANSACTIONS.length - 1].date;
+            TOTAL_MONTHS = Math.max(1, (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + (lastDate.getMonth() - firstDate.getMonth()) + 1);
+
+            const lonBalancesByDate = Object.fromEntries(LONKONTO_TRANSACTIONS.map(tx => [tx.date.toISOString().split('T')[0], tx.balance]));
+            const budgetBalancesByDate = Object.fromEntries(BUDGET_TRANSACTIONS.map(tx => [tx.date.toISOString().split('T')[0], tx.balance]));
+            
+            const dailyLonBalances = {};
+            const dailyBudgetBalances = {};
+            let currentDate = new Date(firstDate);
+            let lastLonBalance = LONKONTO_TRANSACTIONS[0]?.balance - LONKONTO_TRANSACTIONS[0]?.amount || 0;
+            let lastBudgetBalance = BUDGET_TRANSACTIONS[0]?.balance - BUDGET_TRANSACTIONS[0]?.amount || 0;
+
+            while (currentDate <= lastDate) {
+                const todayStr = currentDate.toISOString().split('T')[0];
+                lastLonBalance = lonBalancesByDate[todayStr] ?? lastLonBalance;
+                lastBudgetBalance = budgetBalancesByDate[todayStr] ?? lastBudgetBalance;
+                dailyLonBalances[todayStr] = lastLonBalance;
+                dailyBudgetBalances[todayStr] = lastBudgetBalance;
+                currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+            }
+            
+            if (balanceChartInstance) balanceChartInstance.destroy();
+            const balanceCtx = document.getElementById('balanceChart').getContext('2d');
+            balanceChartInstance = new Chart(balanceCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(dailyLonBalances),
+                    datasets: [
+                        { label: 'Lønkonto', data: Object.values(dailyLonBalances), backgroundColor: '#3b82f6' },
+                        { label: 'Budgetkonto', data: Object.values(dailyBudgetBalances), backgroundColor: '#8b5cf6' }
+                    ]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    scales: { 
+                        x: { type: 'time', time: { unit: 'month' }, grid: { display: false }, stacked: true }, 
+                        y: { beginAtZero: true, stacked: true } 
+                    }, 
+                    plugins: { legend: { position: 'bottom' } },
+                    barPercentage: 1.0, 
+                    categoryPercentage: 1.0 
+                }
+            });
+
+            updateAndDisplayLoanDetails();
+            // Prefill investments loan inputs from parsed loan data if module is present
+            if (window.Investments?.prefillFromLoans) {
+                try { window.Investments.prefillFromLoans(); } catch (_) {}
+            }
+            updateBalanceKPIs();
+            updateDashboard(ALL_TRANSACTIONS, "Alle Transaktioner");
+            generateInsights(getFinancialSummary(ALL_TRANSACTIONS));
+            
+            const yearSelector = document.getElementById('yearSelector');
+            const years = [...new Set(ALL_TRANSACTIONS.map(t => t.date.getFullYear()))].sort((a,b) => b-a);
+            yearSelector.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+            const monthNames = ["Januar", "Februar", "Marts", "April", "Maj", "Juni", "Juli", "August", "September", "Oktober", "November", "December"];
+            document.getElementById('monthSelector').innerHTML = monthNames.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+            
+            document.getElementById('mainContent').style.display = 'block';
+            document.getElementById('uploadSection').style.display = 'none';
+        }
+        
+        function getCurrentPeriodTransactions() {
+            const activeBtn = document.querySelector('.view-btn-group button.active');
+            const selectors = { year: document.getElementById('yearSelector'), month: document.getElementById('monthSelector') };
+            
+            if (activeBtn.id === 'btnFull') return ALL_TRANSACTIONS;
+            if (activeBtn.id === 'btnYear') {
+                const year = parseInt(selectors.year.value);
+                return ALL_TRANSACTIONS.filter(t => t.date.getFullYear() === year);
+            }
+            if (activeBtn.id === 'btnMonth') {
+                const year = parseInt(selectors.year.value);
+                const month = parseInt(selectors.month.value);
+                return ALL_TRANSACTIONS.filter(t => t.date.getFullYear() === year && t.date.getMonth() === month);
+            }
+            return ALL_TRANSACTIONS;
+        }
+
+        function updateAndDisplayLoanDetails() {
+            const loanDetailsContainer = document.getElementById('loanDetails');
+            loanDetailsContainer.innerHTML = ''; // Clear previous
+            LOAN_DATA = {}; // Reset global loan data
+
+            // Realkreditlån - from amortization schedule
+            if (Object.keys(AMORTIZATION_SCHEDULE).length > 0) {
+                // Use the last available amortization term with date <= TODAY
+                const terms = Object.values(AMORTIZATION_SCHEDULE).filter(t => t.date && t.date <= TODAY);
+                if (terms.length > 0) {
+                    const lastTermData = terms.sort((a,b) => b.date - a.date)[0];
+                    LOAN_DATA['Realkreditlån'] = { debt: lastTermData.restgaeld, rate: 0 };
+                    loanDetailsContainer.innerHTML += `
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Realkreditlån</label>
+                            <p class="text-sm text-gray-900 mt-1">Restgæld: <strong>${formatCurrency(lastTermData.restgaeld)}</strong></p>
+                        </div>`;
+                }
+            }
+
+            // Boliglån - from transactions
+            if (BOLIGLAAN_TRANSACTIONS.length > 0) {
+                // Use the latest available boliglån transaction (file-ordered)
+                const lastTransaction = BOLIGLAAN_TRANSACTIONS[BOLIGLAAN_TRANSACTIONS.length - 1];
+                if (lastTransaction) {
+                    const debt = Math.abs(lastTransaction.balance);
+                    LOAN_DATA['Boliglån'] = { debt: debt, rate: 0 };
+                    loanDetailsContainer.innerHTML += `
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Boliglån</label>
+                            <p class="text-sm text-gray-900 mt-1">Restgæld: <strong>${formatCurrency(debt)}</strong></p>
+                        </div>`;
+                }
+            }
+
+            // SU-Lån removed per user request
+        }
+
+        function updateBalanceKPIs() {
+            const kpiContainer = document.getElementById('balanceKpis');
+            kpiContainer.innerHTML = '';
+            const oneYearAgo = new Date(TODAY);
+            oneYearAgo.setFullYear(TODAY.getFullYear() - 1);
+
+            const accounts = [
+                { name: 'Lønkonto', transactions: LONKONTO_TRANSACTIONS, isDebt: false },
+                { name: 'Budgetkonto', transactions: BUDGET_TRANSACTIONS, isDebt: false },
+                { name: 'Boliglån', transactions: BOLIGLAAN_TRANSACTIONS, isDebt: true },
+            ];
+
+            // Handle Realkredit separately
+            if (Object.keys(AMORTIZATION_SCHEDULE).length > 0) {
+                const terms = Object.values(AMORTIZATION_SCHEDULE).sort((a,b) => a.date - b.date);
+                const currentTerm = terms.filter(t => t.date <= TODAY).pop();
+                const lastYearTerm = terms.filter(t => t.date <= oneYearAgo).pop();
+                
+                const currentBalance = currentTerm ? -currentTerm.restgaeld : 0;
+                const lastYearBalance = lastYearTerm ? -lastYearTerm.restgaeld : 0;
+                const change = currentBalance - lastYearBalance;
+                
+                kpiContainer.innerHTML += createKpiCard('Realkreditlån', currentBalance, change);
+            }
+
+            accounts.forEach(acc => {
+                if (acc.transactions.length === 0) return;
+
+                // Use most recent transaction for current balance (exclude future dated rows)
+                const currentTx = acc.transactions.filter(t => t.date <= TODAY).pop();
+                const lastYearTx = acc.transactions.filter(t => t.date <= oneYearAgo).pop();
+
+                const currentBalance = currentTx ? (acc.isDebt ? -Math.abs(currentTx.balance) : currentTx.balance) : 0;
+                const lastYearBalance = lastYearTx ? (acc.isDebt ? -Math.abs(lastYearTx.balance) : lastYearTx.balance) : 0;
+                const change = currentBalance - lastYearBalance;
+
+                kpiContainer.innerHTML += createKpiCard(acc.name, currentBalance, change);
+            });
+
+            // Explicitly show Aktiedepot and Aktiesparekonto balances
+            const aktieDepotEl = document.getElementById('aktieDepotBalance');
+            if (aktieDepotEl) aktieDepotEl.textContent = formatCurrency(AKTIEDEPOT_BALANCE);
+            const aktieSparekontoEl = document.getElementById('aktieSparekontoBalance');
+            if (aktieSparekontoEl) aktieSparekontoEl.textContent = formatCurrency(AKTIESPAREKONTO_BALANCE);
+        }
+
+        function createKpiCard(name, balance, change) {
+            const isPositive = change >= 0;
+            const changeColor = isPositive ? 'text-green-600' : 'text-red-600';
+            const arrow = isPositive ? '↑' : '↓';
+            return `
+                <div class="card">
+                    <h3 class="text-sm font-semibold text-gray-500">${name}</h3>
+                    <p class="text-2xl font-bold text-gray-800 mt-2">${formatCurrency(balance)}</p>
+                    <p class="text-sm font-medium ${changeColor} mt-1 flex items-center">
+                        ${arrow} ${formatCurrency(Math.abs(change))} vs. sidste år
+                    </p>
+                </div>
+            `;
+        }
+
+
+        function setupEventListeners() {
+            const tabs = document.querySelectorAll('.tab-btn');
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    const targetId = tab.id.replace('tab-', 'content-');
+                    tabContents.forEach(content => {
+                        content.classList.toggle('active', content.id === targetId);
+                    });
+                });
+            });
+
+            const viewBtnGroup = document.querySelector('.view-btn-group');
+            const selectors = { year: document.getElementById('yearSelector'), month: document.getElementById('monthSelector') };
+            viewBtnGroup.addEventListener('click', (e) => {
+                if (e.target.tagName !== 'BUTTON') return;
+                viewBtnGroup.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                selectors.year.classList.toggle('hidden', e.target.id === 'btnFull');
+                selectors.month.classList.toggle('hidden', e.target.id !== 'btnMonth');
+                handlePeriodChange();
+            });
+
+            const handlePeriodChange = () => {
+                const transactions = getCurrentPeriodTransactions();
+                let title = "Alle Transaktioner";
+                const activeBtn = document.querySelector('.view-btn-group button.active');
+                if (activeBtn.id === 'btnYear') {
+                    title = `Transaktioner for ${selectors.year.value}`;
+                } else if (activeBtn.id === 'btnMonth') {
+                    title = `Transaktioner for ${selectors.month.options[selectors.month.selectedIndex].text} ${selectors.year.value}`;
+                }
+                updateDashboard(transactions, title);
+            };
+            selectors.year.addEventListener('change', handlePeriodChange);
+            selectors.month.addEventListener('change', handlePeriodChange);
+            
+            document.getElementById('resetFilterBtn').addEventListener('click', () => {
+                handlePeriodChange();
+            });
+            
+             document.getElementById('mainAmountHeader').addEventListener('click', (e) => {
+                const header = e.currentTarget;
+                const newDirection = mainTableSort.direction === 'desc' ? 'asc' : 'desc';
+                mainTableSort = { column: 'amount', direction: newDirection };
+
+                document.querySelectorAll('.sortable-header').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+                header.classList.add(newDirection === 'desc' ? 'sort-desc' : 'sort-asc');
+
+                updateTransactionsTable(CURRENTLY_DISPLAYED_TRANSACTIONS, document.getElementById('transactionsTitle').textContent);
+            });
+
+
+            ['fiAnnualSpending', 'fiCurrentInvestments', 'fiHomeValue', 'fiPension'].forEach(id => {
+                document.getElementById(id).addEventListener('input', updateFiTracker);
+            });
+
+            // Remove file upload event listener logic (auto-load is used)
+
+            // Toggle average/total for the expense chart
+            const expenseToggle = document.getElementById('expenseToggleAvgButton');
+            if (expenseToggle) {
+                expenseToggle.addEventListener('click', () => {
+                    SHOW_AVERAGE_CHART = !SHOW_AVERAGE_CHART;
+                    expenseToggle.textContent = SHOW_AVERAGE_CHART ? 'Vis totals' : 'Vis som gennemsnit';
+                    updateExpenseBreakdownChart(CURRENTLY_DISPLAYED_TRANSACTIONS);
+                });
+            }
+
+            // Initialize investments module (encapsulated)
+            if (window.Investments?.setup) window.Investments.setup();
+        }
+
+        document.addEventListener('DOMContentLoaded', setupEventListeners);
+
+    // Investments module is now loaded from external file
+    </script>
+</body>
+</html>
