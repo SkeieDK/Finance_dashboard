@@ -60,7 +60,7 @@ function collapseSeriesToYears(series) {
 }
 
 // Test constants
-const start = 9792; // sample askStart (Værdi DKK)
+const start = 22196.4; // sample askStart (Værdi DKK) from aktiesparekonto
 const monthly = 10000;
 const years = 10;
 const rPct = 7;
