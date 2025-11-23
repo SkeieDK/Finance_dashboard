@@ -713,20 +713,22 @@
 
 
                         function runSimulationAndRender() {
-                            const pYears = 20; // default horizon for display
+                            const pYears = 30; // default horizon for display (30 years)
                             const pStart = Number(document.getElementById('invPensionBalance').value) || 0;
                             const pMonthly = Number(document.getElementById('invPensionMonthly').value) || 0;
                             const pReturn = Number(document.getElementById('invPensionReturn').value) || 5;
                             const pTaxPct = InvestingRules ? InvestingRules.palTaxPct : 15.3;
+                            console.debug('runSimulationAndRender: pStart=', pStart, 'pMonthly=', pMonthly, 'pYears=', pYears, 'pReturn=', pReturn);
                             const pSim = simulateSeries(pStart, pMonthly, pYears, pReturn, 0.2, pTaxPct, 'annual');
 
-                            const fYears = 20;
+                            const fYears = 30;
                             const fStart = Number(document.getElementById('invFreeBalance').value) || 0;
                             const fMonthly = Number(document.getElementById('invFreeMonthly').value) || 0;
                             const fReturn = Number(document.getElementById('invFreeReturn').value) || 7;
                             const fTax = Number(document.getElementById('invFreeTax').value) || 27;
                             const fFee = Number(document.getElementById('invFreeFee').value) || 0.2;
                             const fTaxModel = document.getElementById('invFreeTaxModel').value || 'annual';
+                            console.debug('runSimulationAndRender: fStart=', fStart, 'fMonthly=', fMonthly, 'fYears=', fYears, 'fReturn=', fReturn);
                             const fSim = simulateSeries(fStart, fMonthly, fYears, fReturn, fFee, fTax, fTaxModel, null, true);
                             // Aktiesparekonto simulation
                             const askStart = Number(document.getElementById('invAskBalance').value) || 0;
@@ -734,15 +736,21 @@
                             const askReturn = Number(document.getElementById('invAskReturn').value) || 7;
                             const askTax = InvestingRules ? InvestingRules.aktiesparekontoTaxPct : 17;
                             const askCapVal = Number(document.getElementById('invAskCap')?.value) || 0;
+                            console.debug('runSimulationAndRender: askStart=', askStart, 'askMonthly=', askMonthly, 'askCapVal=', askCapVal);
                             const askSim = simulateSeries(askStart, askMonthly, fYears, askReturn, 0.2, askTax, 'annual', askCapVal);
 
                             // Collapse monthly to yearly series for chart display
                             const pSeriesYear = collapseSeriesToYears(pSim.series);
                             const fSeriesYear = collapseSeriesToYears(fSim.series);
                             const askSeriesYear = collapseSeriesToYears(askSim.series);
+                            console.debug('runSimulationAndRender: pSeriesYear length=', pSeriesYear.length, 'fSeriesYear length=', fSeriesYear.length, 'askSeriesYear length=', askSeriesYear.length);
+                            console.debug('runSimulationAndRender: fSim.bracket1Series length=', (fSim.bracket1Series || []).length, 'fSim.bracket2Series length=', (fSim.bracket2Series || []).length);
                             // Collapse bracket series too (aggregate annually) for tooltips and totals
                             const fBracket1Year = collapseSeriesToYears(fSim.bracket1Series || []);
                             const fBracket2Year = collapseSeriesToYears(fSim.bracket2Series || []);
+                            // Ensure bracket arrays have the same length as the collapsed series by padding zeros
+                            while (fBracket1Year.length < pSeriesYear.length) fBracket1Year.push(0);
+                            while (fBracket2Year.length < pSeriesYear.length) fBracket2Year.push(0);
                             const yearsCount = Math.max(pSeriesYear.length, fSeriesYear.length, askSeriesYear.length);
                             renderInvestmentChart(pSeriesYear, fSeriesYear, yearsCount, askSeriesYear, { fBracket1Year, fBracket2Year });
                             // Calculate aggregate bracket taxes for Frie investeringer
