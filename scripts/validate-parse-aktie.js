@@ -51,9 +51,36 @@ function parseAktieCsvContent(rawData) {
   }, 0);
 }
 
+function parseAktieClosingValueAtDate(rawData, targetDateStr) {
+  if (!rawData) return 0;
+  rawData = String(rawData).replace(/^\uFEFF/, '');
+  const rows = rawData.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (rows.length < 2) return 0;
+  const headerParts = rows[0].split(';').map(h => h.trim());
+  const headerNormalized = headerParts.map(h => normalizeHeaderName(h));
+  const valueIdx = headerNormalized.findIndex(h => h === 'vaerdi dkk' || h === 'vaerdidkk') >= 0 ? headerNormalized.findIndex(h => h === 'vaerdi dkk' || h === 'vaerdidkk') : headerNormalized.findIndex(h => h === 'vaerdi');
+  if (valueIdx === -1) return 0;
+  const targetDate = new Date(targetDateStr + 'T23:59:59');
+  let sum = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const parts = rows[i].split(';').map(p => p.trim());
+    const dStr = parts[0] || '';
+    const dp = dStr.split('-');
+    if (dp.length === 3) {
+      const d = new Date(dp[2] + '-' + dp[1] + '-' + dp[0] + 'T23:59:59');
+      if (d <= targetDate) {
+        const val = parseNumberForCsv(parts[valueIdx]);
+        if (!isNaN(val)) sum += val;
+      }
+    }
+  }
+  return sum;
+}
+
 const fname1 = path.join(__dirname, '..', 'aktiesdepot.csv');
 const fname2 = path.join(__dirname, '..', 'aktiesparekonto.csv');
 const f1 = fs.readFileSync(fname1, 'utf8');
 const f2 = fs.readFileSync(fname2, 'utf8');
 console.log('Aktiedepot sum (DKK preferred):', parseAktieCsvContent(f1));
 console.log('Aktiesparekonto sum (DKK preferred):', parseAktieCsvContent(f2));
+console.log('Aktiesparekonto closing 2025-12-31 (DKK):', parseAktieClosingValueAtDate(f2, '2025-12-31'));
