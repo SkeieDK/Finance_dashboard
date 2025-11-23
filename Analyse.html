@@ -222,7 +222,7 @@
                         <h2 class="text-xl font-semibold text-gray-700 mb-4">Vej mod Finansiel Uafhængighed (FI)</h2>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                             <div><label for="fiAnnualSpending" class="block text-sm font-medium text-gray-700">Ønsket årligt forbrug (pension)</label><input type="number" id="fiAnnualSpending" value="300000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
-                            <div><label for="fiCurrentInvestments" class="block text-sm font-medium text-gray-700">Nuværende investeringer</label><input type="number" id="fiCurrentInvestments" value="25000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                            <div><label for="fiCurrentInvestments" class="block text-sm font-medium text-gray-700">Nuværende opsparing</label><input type="number" id="fiCurrentInvestments" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
                             <div><label for="fiHomeValue" class="block text-sm font-medium text-gray-700">Nuværende boligværdi</label><input type="number" id="fiHomeValue" value="1175000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
                             <div><label for="fiPension" class="block text-sm font-medium text-gray-700">Nuværende pensionsdepoter</label><input type="number" id="fiPension" value="140000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
                         </div>
@@ -1504,6 +1504,24 @@
             if (aktieDepotEl) aktieDepotEl.textContent = formatCurrency(AKTIEDEPOT_BALANCE);
             const aktieSparekontoEl = document.getElementById('aktieSparekontoBalance');
             if (aktieSparekontoEl) aktieSparekontoEl.textContent = formatCurrency(AKTIESPAREKONTO_BALANCE);
+
+            // Set FI current investments default to latest balances (Lønkonto + Budgetkonto + Aktiedepot + Aktiesparekonto)
+            try {
+                const lastLonTx = LONKONTO_TRANSACTIONS.filter(t => t.date <= TODAY).pop();
+                const lastBudgetTx = BUDGET_TRANSACTIONS.filter(t => t.date <= TODAY).pop();
+                const lonBal = lastLonTx ? lastLonTx.balance : 0;
+                const budBal = lastBudgetTx ? lastBudgetTx.balance : 0;
+                const currentSavings = lonBal + budBal + (AKTIEDEPOT_BALANCE || 0) + (AKTIESPAREKONTO_BALANCE || 0);
+                const fiInvestEl = document.getElementById('fiCurrentInvestments');
+                if (fiInvestEl) {
+                    // Only set input value if the user has not provided a value manually (zero or empty)
+                    const currentVal = Number(fiInvestEl.value || 0);
+                    if (!currentVal) {
+                        fiInvestEl.value = Math.round(currentSavings);
+                    }
+                }
+                updateFiTracker();
+            } catch (e) { console.warn('Failed to set FI investments default', e); }
         }
 
         function createKpiCard(name, balance, change) {
