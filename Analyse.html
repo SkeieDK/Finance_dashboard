@@ -484,7 +484,7 @@
                         }
 
                         // Simulation: monthly compounding, monthly fee, yearly tax or deferred tax
-                        function simulateSeries(start, monthly, years, rPct, feePct, taxPct, taxModel, contribCap = null) {
+                        function simulateSeries(start, monthly, years, rPct, feePct, taxPct, taxModel, contribCap = null, bracketBreakdown=false) {
                             const months = Math.max(1, Math.round(years * MONTHS_PER_YEAR));
                             const monthlyRate = (rPct / 100) / MONTHS_PER_YEAR;
                             const monthlyFeeRate = (feePct / 100) / MONTHS_PER_YEAR;
@@ -497,6 +497,9 @@
                             let contributionsThisYear = 0;
 
                             let capReachedAtMonth = null;
+                            // track per-year bracketed taxes (for aktie income)
+                            const bracket1Series = []; // 27% portion taxes by month (we will aggregate annually)
+                            const bracket2Series = [];
                             for (let m = 1; m <= months; m++) {
                                 // growth
                                 const gain = value * monthlyRate;
@@ -523,10 +526,26 @@
                                 if (taxModel === 'annual' && m % 12 === 0) {
                                     const gainThisYear = value - lastYearEndValue - contributionsThisYear;
                                     const taxable = Math.max(0, gainThisYear);
-                                    const tax = taxable * (taxPct / 100);
-                                    if (tax > 0) {
-                                        value -= tax;
-                                        taxesPaid += tax;
+                                    if (bracketBreakdown && window.InvestingRules) {
+                                        // use the InvestingRules breakdown helper to split into brackets
+                                        const breakdown = InvestingRules.aktieIncomeTaxBreakdown(taxable);
+                                        const taxThisYear = breakdown.totalTax; // already as absolute currency
+                                        // record bracket taxes for the year (we store values and will push into series)
+                                        bracket1Series.push(breakdown.bracket1Tax);
+                                        bracket2Series.push(breakdown.bracket2Tax);
+                                        if (taxThisYear > 0) {
+                                            value -= taxThisYear;
+                                            taxesPaid += taxThisYear;
+                                        }
+                                    } else {
+                                        const tax = taxable * (taxPct / 100);
+                                        // no bracket breakdown
+                                        bracket1Series.push(0);
+                                        bracket2Series.push(0);
+                                        if (tax > 0) {
+                                            value -= tax;
+                                            taxesPaid += tax;
+                                        }
                                     }
                                     lastYearEndValue = value;
                                     contributionsThisYear = 0;
@@ -544,10 +563,10 @@
                                 }
                             }
 
-                            return { series, finalValue: value, contributions, taxesPaid, feesPaid, capReachedAtMonth };
+                            return { series, finalValue: value, contributions, taxesPaid, feesPaid, capReachedAtMonth, bracket1Series, bracket2Series };
                         }
 
-                        function renderInvestmentChart(pSeries, fSeries, years, askSeries) {
+                        function renderInvestmentChart(pSeries, fSeries, years, askSeries, metaData = {}) {
                             const ctx = document.getElementById('investmentChart').getContext('2d');
                             // pSeries/fSeries are expected to be yearly series arrays when called from the UI
                             const startYear = new Date().getFullYear();
@@ -555,7 +574,7 @@
                             if (investmentChartInstance) investmentChartInstance.destroy();
                             const datasets = [
                                 { label: 'Pension', data: pSeries, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.2 },
-                                { label: 'Frie investeringer', data: fSeries, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.08)', tension: 0.2 }
+                                { label: 'Frie investeringer', data: fSeries, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.08)', tension: 0.2, meta: { fBracket1Year: metaData.fBracket1Year || [], fBracket2Year: metaData.fBracket2Year || [] } }
                             ];
                             if (askSeries && Array.isArray(askSeries)) {
                                 datasets.push({ label: 'Aktiesparekonto', data: askSeries, borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.08)', tension: 0.2 });
@@ -566,11 +585,11 @@
                                     labels,
                                     datasets: datasets
                                 },
-                                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: true } } }
+                                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: true } }, plugins: { tooltip: { callbacks: { label: function(context) { try { const ds = context.dataset; const idx = context.dataIndex; const lines = []; const label = ds.label || ''; lines.push(label + ': ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(context.parsed.y)); if (ds.meta && ds.meta.fBracket1Year) { const b1 = ds.meta.fBracket1Year[idx] || 0; const b2 = ds.meta.fBracket2Year[idx] || 0; if (b1 || b2) { lines.push('Skat 27%: ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(b1)); lines.push('Skat 42%: ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(b2)); } } return lines; } catch(e){ return context.dataset.label + ': ' + context.formattedValue; } } } } }
                             });
                         }
 
-                        function renderInvestmentResults(pRes, fRes) {
+                        function renderInvestmentResults(pRes, fRes, fBracket1Total=0, fBracket2Total=0) {
                             const el = document.getElementById('investmentResults');
                             el.innerHTML = `
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -586,6 +605,8 @@
                                         <div>Indbetalt: ${fmt.format(fRes.contributions)}</div>
                                         <div>Slutværdi (efter skat): ${fmt.format(fRes.finalValue)}</div>
                                         <div>Betalt skat (est.): ${fmt.format(fRes.taxesPaid)}</div>
+                                        <div>Skat 27% (est.): ${fmt.format(fBracket1Total)}</div>
+                                        <div>Skat 42% (est.): ${fmt.format(fBracket2Total)}</div>
                                         <div>Betalte gebyrer (est.): ${fmt.format(fRes.feesPaid)}</div>
                                     </div>
                                 </div>
@@ -706,7 +727,7 @@
                             const fTax = Number(document.getElementById('invFreeTax').value) || 27;
                             const fFee = Number(document.getElementById('invFreeFee').value) || 0.2;
                             const fTaxModel = document.getElementById('invFreeTaxModel').value || 'annual';
-                            const fSim = simulateSeries(fStart, fMonthly, fYears, fReturn, fFee, fTax, fTaxModel);
+                            const fSim = simulateSeries(fStart, fMonthly, fYears, fReturn, fFee, fTax, fTaxModel, null, true);
                             // Aktiesparekonto simulation
                             const askStart = Number(document.getElementById('invAskBalance').value) || 0;
                             const askMonthly = Number(document.getElementById('invAskMonthly').value) || 0;
@@ -719,9 +740,15 @@
                             const pSeriesYear = collapseSeriesToYears(pSim.series);
                             const fSeriesYear = collapseSeriesToYears(fSim.series);
                             const askSeriesYear = collapseSeriesToYears(askSim.series);
+                            // Collapse bracket series too (aggregate annually) for tooltips and totals
+                            const fBracket1Year = collapseSeriesToYears(fSim.bracket1Series || []);
+                            const fBracket2Year = collapseSeriesToYears(fSim.bracket2Series || []);
                             const yearsCount = Math.max(pSeriesYear.length, fSeriesYear.length, askSeriesYear.length);
-                            renderInvestmentChart(pSeriesYear, fSeriesYear, yearsCount, askSeriesYear);
-                            renderInvestmentResults(pSim, fSim);
+                            renderInvestmentChart(pSeriesYear, fSeriesYear, yearsCount, askSeriesYear, { fBracket1Year, fBracket2Year });
+                            // Calculate aggregate bracket taxes for Frie investeringer
+                            const fBracket1Total = (fSim.bracket1Series || []).reduce((s, v) => s + Number(v || 0), 0);
+                            const fBracket2Total = (fSim.bracket2Series || []).reduce((s, v) => s + Number(v || 0), 0);
+                            renderInvestmentResults(pSim, fSim, fBracket1Total, fBracket2Total);
                             addAktiespareResult(askSim);
                             // Update cap reached UI for Aktiesparekonto
                             const capReachedEl = document.getElementById('invAskCapReached');

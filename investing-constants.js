@@ -63,6 +63,23 @@
             const gain = (Number(value || 0) * (Number(annualReturnPct || 0) / 100));
             return gain * (pal / 100);
         }
+        ,
+        // Breaks down a taxable aktieindkomst into bracket taxes for the configured bands
+        aktieIncomeTaxBreakdown(taxableValue) {
+            const v = Number(taxableValue || 0);
+            const bracket = Number(this.aktieIncomeBracketThreshold || 0);
+            const r1 = Number(this.aktieIncomeTaxRate1 || 0);
+            const r2 = Number(this.aktieIncomeTaxRate2 || 0);
+            const part1 = Math.max(0, Math.min(v, bracket));
+            const part2 = Math.max(0, v - bracket);
+            return {
+                bracket1Value: part1,
+                bracket2Value: part2,
+                bracket1Tax: part1 * r1,
+                bracket2Tax: part2 * r2,
+                totalTax: part1 * r1 + part2 * r2
+            };
+        }
     };
 
     // Expose global variable for the front-end to use
