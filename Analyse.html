@@ -1669,27 +1669,17 @@
             } catch (e) {}
 
             // Ensure the Investment UI picks up parsed balances (if user didn't set them manually)
-            try {
-                const askStored = JSON.parse(localStorage.getItem('invAsk') || '{}');
-                const freeStored = JSON.parse(localStorage.getItem('invFree') || '{}');
+                try {
+                // Always update the 'Nuværende depot' inputs with current parsed balances (prefer CSV values) so UI reflects parsed data; user can overwrite and save if desired.
                 const invFreeEl = document.getElementById('invFreeBalance');
-                if (invFreeEl) {
-                    const currentVal = Number(invFreeEl.value || 0);
-                    // Only auto-fill if currently zero and no stored value
-                    if ((currentVal === 0 || isNaN(currentVal)) && !freeStored.balance) {
-                        invFreeEl.value = (typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0);
-                    }
-                }
+                if (invFreeEl) invFreeEl.value = Math.round((typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0));
                 const invAskEl = document.getElementById('invAskBalance');
-                if (invAskEl) {
-                    const currentAskVal = Number(invAskEl.value || 0);
-                    if ((currentAskVal === 0 || isNaN(currentAskVal)) && !askStored.balance) {
-                        invAskEl.value = (typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : 0);
-                    }
-                }
+                if (invAskEl) invAskEl.value = Math.round((typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : 0));
                 // Refresh the investments UI summary and aktiespare info
                 try { renderSummary(); runSimulationAndRender(); } catch (e) { /* ignore */ }
                 try { updateAktiespareInfo(); } catch (e) { /* ignore */ }
+                // Also update FI tooltip to match updated balances
+                try { const lastLonTx = LONKONTO_TRANSACTIONS.filter(t => t.date <= TODAY).pop(); const lastBudgetTx = BUDGET_TRANSACTIONS.filter(t => t.date <= TODAY).pop(); const lonBal = lastLonTx ? lastLonTx.balance : 0; const budBal = lastBudgetTx ? lastBudgetTx.balance : 0; updateFiSavingsTooltip({ lon: lonBal || 0, budget: budBal || 0, aktiedepot: AKTIEDEPOT_BALANCE || 0, aktiespare: AKTIESPAREKONTO_BALANCE || 0 }); } catch (e) {}
             } catch (e) { console.debug('Could not auto-fill investment balances', e); }
 
             const lonBalancesByDate = Object.fromEntries(LONKONTO_TRANSACTIONS.map(tx => [tx.date.toISOString().split('T')[0], tx.balance]));
