@@ -222,7 +222,14 @@
                         <h2 class="text-xl font-semibold text-gray-700 mb-4">Vej mod Finansiel Uafhængighed (FI)</h2>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                             <div><label for="fiAnnualSpending" class="block text-sm font-medium text-gray-700">Ønsket årligt forbrug (pension)</label><input type="number" id="fiAnnualSpending" value="300000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
-                            <div><label for="fiCurrentInvestments" class="block text-sm font-medium text-gray-700">Nuværende opsparing</label><input type="number" id="fiCurrentInvestments" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
+                            <div class="relative">
+                                <label for="fiCurrentInvestments" class="block text-sm font-medium text-gray-700">Nuværende opsparing <button id="fiSavingsTooltipBtn" aria-label="Vis opsparingsopdeling" class="inline-block ml-1 align-text-top text-gray-400 hover:text-gray-700 focus:outline-none" title="Vis opdeling"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 17c-4.418 0-8 3.582-8 8h16c0-4.418-3.582-8-8-8z"/></svg></button></label>
+                                <input type="number" id="fiCurrentInvestments" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                <div id="fiSavingsTooltip" class="hidden absolute z-50 left-0 mt-2 p-3 w-64 bg-white border border-gray-200 rounded-md shadow-md text-sm text-gray-700">
+                                    <div id="fiSavingsTooltipTitle" class="font-semibold text-gray-800">Opsparings-opdeling</div>
+                                    <div id="fiSavingsTooltipBody" class="mt-2 text-xs text-gray-600">Indlæser...</div>
+                                </div>
+                            </div>
                             <div><label for="fiHomeValue" class="block text-sm font-medium text-gray-700">Nuværende boligværdi</label><input type="number" id="fiHomeValue" value="1175000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
                             <div><label for="fiPension" class="block text-sm font-medium text-gray-700">Nuværende pensionsdepoter</label><input type="number" id="fiPension" value="140000" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></div>
                         </div>
@@ -1271,6 +1278,27 @@
                     <div class="flex justify-between border-t pt-1 mt-1 font-bold"><span>Nettoformue:</span> <span>${formatCurrency(netWorth)}</span></div>
                 `;
             }
+            // Also update tooltip if visible
+            try {
+                const lastLonTx = LONKONTO_TRANSACTIONS.filter(t => t.date <= TODAY).pop();
+                const lastBudgetTx = BUDGET_TRANSACTIONS.filter(t => t.date <= TODAY).pop();
+                const lonBal = lastLonTx ? lastLonTx.balance : 0;
+                const budBal = lastBudgetTx ? lastBudgetTx.balance : 0;
+                updateFiSavingsTooltip({ lon: lonBal || 0, budget: budBal || 0, aktiedepot: AKTIEDEPOT_BALANCE || 0, aktiespare: AKTIESPAREKONTO_BALANCE || 0 });
+            } catch (e) { console.warn('Failed updating FI savings tooltip', e); }
+        }
+
+        function updateFiSavingsTooltip({ lon = 0, budget = 0, aktiedepot = 0, aktiespare = 0 } = {}) {
+            const body = document.getElementById('fiSavingsTooltipBody');
+            if (!body) return;
+            const lines = [
+                `<div class="flex justify-between"><span>Lønkonto</span><span>${formatCurrency(lon)}</span></div>`,
+                `<div class="flex justify-between"><span>Budgetkonto</span><span>${formatCurrency(budget)}</span></div>`,
+                `<div class="flex justify-between"><span>Aktiedepot</span><span>${formatCurrency(aktiedepot)}</span></div>`,
+                `<div class="flex justify-between"><span>Aktiesparekonto</span><span>${formatCurrency(aktiespare)}</span></div>`,
+                `<hr class="my-2"/><div class="flex justify-between font-semibold"><span>Samlet</span><span>${formatCurrency(lon + budget + aktiedepot + aktiespare)}</span></div>`
+            ];
+            body.innerHTML = lines.join('');
         }
         
         function generateInsights(summary) {
@@ -1520,6 +1548,8 @@
                         fiInvestEl.value = Math.round(currentSavings);
                     }
                 }
+                // Update tooltip content with breakdown
+                updateFiSavingsTooltip({ lon: lonBal || 0, budget: budBal || 0, aktiedepot: AKTIEDEPOT_BALANCE || 0, aktiespare: AKTIESPAREKONTO_BALANCE || 0 });
                 updateFiTracker();
             } catch (e) { console.warn('Failed to set FI investments default', e); }
         }
@@ -1613,6 +1643,21 @@
 
             // Initialize investments module (encapsulated)
             if (window.Investments?.setup) window.Investments.setup();
+
+            // Tooltip behaviour for FI savings breakdown
+            const tooltipBtn = document.getElementById('fiSavingsTooltipBtn');
+            const tooltipEl = document.getElementById('fiSavingsTooltip');
+            if (tooltipBtn && tooltipEl) {
+                const show = () => { tooltipEl.classList.remove('hidden'); };
+                const hide = () => { tooltipEl.classList.add('hidden'); };
+                tooltipBtn.addEventListener('mouseenter', show);
+                tooltipBtn.addEventListener('focus', show);
+                tooltipBtn.addEventListener('mouseleave', hide);
+                tooltipBtn.addEventListener('blur', hide);
+                tooltipBtn.addEventListener('click', (e) => { e.preventDefault(); tooltipEl.classList.toggle('hidden'); });
+                // Click outside to close
+                document.addEventListener('click', (e) => { if (!tooltipEl.contains(e.target) && !tooltipBtn.contains(e.target)) tooltipEl.classList.add('hidden'); });
+            }
         }
 
         document.addEventListener('DOMContentLoaded', setupEventListeners);
