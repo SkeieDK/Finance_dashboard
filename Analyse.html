@@ -381,6 +381,7 @@
                         <div id="investmentSummary" class="text-sm text-gray-700">
                             <div>Indlæs data og klik <strong>Gem</strong> for at se oversigten.</div>
                         </div>
+                        <!-- investmentDebug removed; debug output retained as console.debug only -->
                         <div class="mt-4 border rounded-lg p-4">
                             <h3 class="text-md font-medium text-gray-800 mb-2">Aktieindkomst — beregner</h3>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -414,9 +415,10 @@
                             document.getElementById('invPensionBalance').value = p.balance || 0;
                             document.getElementById('invPensionMonthly').value = p.monthly || 0;
                             document.getElementById('invPensionReturn').value = p.return || 5;
-                            // Use aktiedepot for Frie investeringer default balance
-                            const defaultFreeBalance = Math.round((typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0) + (typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : 0));
+                            // Use aktiedepot for Frie investeringer default balance (do not include Aktiesparekonto)
+                            const defaultFreeBalance = Math.round((typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0));
                             document.getElementById('invFreeBalance').value = defaultFreeBalance || Math.round(f.balance || 0);
+                            try { console.debug('Default Frie investeringer set to:', Number(document.getElementById('invFreeBalance').value)); } catch(e) {}
                             document.getElementById('invFreeMonthly').value = f.monthly || 0;
                             document.getElementById('invFreeReturn').value = f.return || 7;
                             document.getElementById('invFreeTax') && (document.getElementById('invFreeTax').value = f.tax || 27);
@@ -530,6 +532,7 @@
                                         // use the InvestingRules breakdown helper to split into brackets
                                         const breakdown = InvestingRules.aktieIncomeTaxBreakdown(taxable);
                                         const taxThisYear = breakdown.totalTax; // already as absolute currency
+                                        try { console.debug('simulateSeries: year', m/12, 'taxable=', taxable, 'bracket1=', breakdown.bracket1Tax, 'bracket2=', breakdown.bracket2Tax, 'totalTax=', taxThisYear); } catch(e) {}
                                         // record bracket taxes for the year (we store values and will push into series)
                                         bracket1Series.push(breakdown.bracket1Tax);
                                         bracket2Series.push(breakdown.bracket2Tax);
@@ -585,7 +588,37 @@
                                     labels,
                                     datasets: datasets
                                 },
-                                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: true } }, plugins: { tooltip: { callbacks: { label: function(context) { try { const ds = context.dataset; const idx = context.dataIndex; const lines = []; const label = ds.label || ''; lines.push(label + ': ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(context.parsed.y)); if (ds.meta && ds.meta.fBracket1Year) { const b1 = ds.meta.fBracket1Year[idx] || 0; const b2 = ds.meta.fBracket2Year[idx] || 0; if (b1 || b2) { lines.push('Skat 27%: ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(b1)); lines.push('Skat 42%: ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(b2)); } } return lines; } catch(e){ return context.dataset.label + ': ' + context.formattedValue; } } } } }
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    scales: { x: { display: true } },
+                                    plugins: {
+                                        tooltip: {
+                                            callbacks: {
+                                                label: function(context) {
+                                                    try {
+                                                        const ds = context.dataset;
+                                                        const idx = context.dataIndex;
+                                                        const lines = [];
+                                                        const label = ds.label || '';
+                                                        lines.push(label + ': ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(context.parsed.y));
+                                                        if (ds.meta && ds.meta.fBracket1Year) {
+                                                            const b1 = ds.meta.fBracket1Year[idx] || 0;
+                                                            const b2 = ds.meta.fBracket2Year[idx] || 0;
+                                                            if (b1 || b2) {
+                                                                lines.push('Skat 27%: ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(b1));
+                                                                lines.push('Skat 42%: ' + new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(b2));
+                                                            }
+                                                        }
+                                                        return lines;
+                                                    } catch (e) {
+                                                        return context.dataset.label + ': ' + context.formattedValue;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             });
                         }
 
@@ -746,8 +779,10 @@
                             console.debug('runSimulationAndRender: pSeriesYear length=', pSeriesYear.length, 'fSeriesYear length=', fSeriesYear.length, 'askSeriesYear length=', askSeriesYear.length);
                             console.debug('runSimulationAndRender: fSim.bracket1Series length=', (fSim.bracket1Series || []).length, 'fSim.bracket2Series length=', (fSim.bracket2Series || []).length);
                             // Collapse bracket series too (aggregate annually) for tooltips and totals
-                            const fBracket1Year = collapseSeriesToYears(fSim.bracket1Series || []);
-                            const fBracket2Year = collapseSeriesToYears(fSim.bracket2Series || []);
+                            // The bracket series are already annual values (pushed once per year in simulateSeries),
+                            // don't collapse them using the monthly collapse function which is for monthly arrays.
+                            const fBracket1Year = (fSim.bracket1Series || []).map(v => Math.round(v));
+                            const fBracket2Year = (fSim.bracket2Series || []).map(v => Math.round(v));
                             // Ensure bracket arrays have the same length as the collapsed series by padding zeros
                             while (fBracket1Year.length < pSeriesYear.length) fBracket1Year.push(0);
                             while (fBracket2Year.length < pSeriesYear.length) fBracket2Year.push(0);
@@ -756,6 +791,7 @@
                             // Calculate aggregate bracket taxes for Frie investeringer
                             const fBracket1Total = (fSim.bracket1Series || []).reduce((s, v) => s + Number(v || 0), 0);
                             const fBracket2Total = (fSim.bracket2Series || []).reduce((s, v) => s + Number(v || 0), 0);
+                            // Debug table removed from UI; keep console.debug logging only
                             renderInvestmentResults(pSim, fSim, fBracket1Total, fBracket2Total);
                             addAktiespareResult(askSim);
                             // Update cap reached UI for Aktiesparekonto
@@ -1707,7 +1743,8 @@
                 try {
                 // Always update the 'Nuværende depot' inputs with current parsed balances (prefer CSV values) so UI reflects parsed data; user can overwrite and save if desired.
                 const invFreeEl = document.getElementById('invFreeBalance');
-                if (invFreeEl) invFreeEl.value = Math.round((typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0) + (typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : 0));
+                if (invFreeEl) invFreeEl.value = Math.round((typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0));
+                try { console.debug('Initialize Dashboard set Frie investeringer to:', Number(invFreeEl?.value)); } catch(e) {}
                 const invAskEl = document.getElementById('invAskBalance');
                 if (invAskEl) invAskEl.value = Math.round((typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : 0));
                 // Refresh the investments UI summary and aktiespare info
@@ -1772,8 +1809,10 @@
             const monthNames = ["Januar", "Februar", "Marts", "April", "Maj", "Juni", "Juli", "August", "September", "Oktober", "November", "December"];
             document.getElementById('monthSelector').innerHTML = monthNames.map((m, i) => `<option value="${i}">${m}</option>`).join('');
             
-            document.getElementById('mainContent').style.display = 'block';
-            document.getElementById('uploadSection').style.display = 'none';
+            const mainContentEl = document.getElementById('mainContent');
+            if (mainContentEl) mainContentEl.style.display = 'block';
+            const uploadSectionEl = document.getElementById('uploadSection');
+            if (uploadSectionEl) uploadSectionEl.style.display = 'none';
         }
         
         function getCurrentPeriodTransactions() {
