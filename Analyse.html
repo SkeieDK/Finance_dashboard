@@ -360,6 +360,10 @@
                                         <label class="block text-sm font-medium text-gray-700">Resterende kapacitet 2026</label>
                                         <input type="number" id="invAskCapRemaining" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" readonly>
                                     </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Kap nået (måned/år)</label>
+                                        <input type="text" id="invAskCapReached" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" readonly>
+                                    </div>
                                 </div>
                             </div>
 
@@ -409,8 +413,9 @@
                             document.getElementById('invPensionBalance').value = p.balance || 0;
                             document.getElementById('invPensionMonthly').value = p.monthly || 0;
                             document.getElementById('invPensionReturn').value = p.return || 5;
-                            // Use aktiedepot for Frie investeringer depot
-                            document.getElementById('invFreeBalance').value = typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : (f.balance || 0);
+                            // Use aktiedepot for Frie investeringer default balance
+                            const defaultFreeBalance = (typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0);
+                            document.getElementById('invFreeBalance').value = defaultFreeBalance || (f.balance || 0);
                             document.getElementById('invFreeMonthly').value = f.monthly || 0;
                             document.getElementById('invFreeReturn').value = f.return || 7;
                             document.getElementById('invFreeTax') && (document.getElementById('invFreeTax').value = f.tax || 27);
@@ -476,7 +481,7 @@
                         }
 
                         // Simulation: monthly compounding, monthly fee, yearly tax or deferred tax
-                        function simulateSeries(start, monthly, years, rPct, feePct, taxPct, taxModel) {
+                        function simulateSeries(start, monthly, years, rPct, feePct, taxPct, taxModel, contribCap = null) {
                             const months = Math.max(1, Math.round(years * MONTHS_PER_YEAR));
                             const monthlyRate = (rPct / 100) / MONTHS_PER_YEAR;
                             const monthlyFeeRate = (feePct / 100) / MONTHS_PER_YEAR;
@@ -488,6 +493,7 @@
                             let lastYearEndValue = value;
                             let contributionsThisYear = 0;
 
+                            let capReachedAtMonth = null;
                             for (let m = 1; m <= months; m++) {
                                 // growth
                                 const gain = value * monthlyRate;
@@ -496,10 +502,19 @@
                                 const fee = value * monthlyFeeRate;
                                 value -= fee;
                                 feesPaid += fee;
-                                // contribution at end of period
-                                value += monthly;
-                                contributions += monthly;
-                                contributionsThisYear += monthly;
+                                // contribution at end of period — possibly limited by cap
+                                let deposit = monthly;
+                                if (contribCap !== null && typeof contribCap !== 'undefined') {
+                                    const allowed = Math.max(0, contribCap - value);
+                                    const depositThisMonth = Math.min(deposit, allowed);
+                                    deposit = depositThisMonth;
+                                    if (depositThisMonth < monthly && capReachedAtMonth === null) {
+                                        capReachedAtMonth = m; // month number when cap was reached and contributions reduced/stopped
+                                    }
+                                }
+                                value += deposit;
+                                contributions += deposit;
+                                contributionsThisYear += deposit;
 
                                 // annual tax event
                                 if (taxModel === 'annual' && m % 12 === 0) {
@@ -526,12 +541,14 @@
                                 }
                             }
 
-                            return { series, finalValue: value, contributions, taxesPaid, feesPaid };
+                            return { series, finalValue: value, contributions, taxesPaid, feesPaid, capReachedAtMonth };
                         }
 
                         function renderInvestmentChart(pSeries, fSeries, years, askSeries) {
                             const ctx = document.getElementById('investmentChart').getContext('2d');
-                            const labels = pSeries.map((_, i) => `M${i+1}`);
+                            // pSeries/fSeries are expected to be yearly series arrays when called from the UI
+                            const startYear = new Date().getFullYear();
+                            const labels = pSeries.map((_, i) => String(startYear + i));
                             if (investmentChartInstance) investmentChartInstance.destroy();
                             const datasets = [
                                 { label: 'Pension', data: pSeries, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.2 },
@@ -546,7 +563,7 @@
                                     labels,
                                     datasets: datasets
                                 },
-                                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: false } } }
+                                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: true } } }
                             });
                         }
 
@@ -571,6 +588,17 @@
                             `;
                         }
 
+                        function collapseSeriesToYears(series) {
+                            if (!Array.isArray(series)) return [];
+                            const yearsCount = Math.ceil(series.length / 12);
+                            const result = [];
+                            for (let y = 0; y < yearsCount; y++) {
+                                const idx = Math.min((y + 1) * 12 - 1, series.length - 1);
+                                result.push(series[idx]);
+                            }
+                            return result;
+                        }
+
                         function addAktiespareResult(askRes) {
                             const el = document.getElementById('investmentResults');
                             const html = `
@@ -580,6 +608,7 @@
                                     <div>Slutværdi (efter skat): ${fmt.format(askRes.finalValue)}</div>
                                     <div>Betalt skat (est.): ${fmt.format(askRes.taxesPaid)}</div>
                                     <div>Betalte gebyrer (est.): ${fmt.format(askRes.feesPaid)}</div>
+                                    <div>Kap nået: ${askRes.capReachedAtMonth ? (new Intl.DateTimeFormat('da-DK', { month: 'short', year: 'numeric' })).format(new Date(new Date().getFullYear(), new Date().getMonth() + (askRes.capReachedAtMonth - 1))) : 'Ikke nået'}</div>
                                 </div>
                             `;
                             // Append after existing content
@@ -677,12 +706,29 @@
                             const askMonthly = Number(document.getElementById('invAskMonthly').value) || 0;
                             const askReturn = Number(document.getElementById('invAskReturn').value) || 7;
                             const askTax = InvestingRules ? InvestingRules.aktiesparekontoTaxPct : 17;
-                            const askSim = simulateSeries(askStart, askMonthly, fYears, askReturn, 0.2, askTax, 'annual');
+                            const askCapVal = Number(document.getElementById('invAskCap')?.value) || 0;
+                            const askSim = simulateSeries(askStart, askMonthly, fYears, askReturn, 0.2, askTax, 'annual', askCapVal);
 
-                            // Add a dataset for Aktiesparekonto to the chart, and show results
-                            renderInvestmentChart(pSim.series, fSim.series, Math.max(pYears, fYears), askSim.series);
+                            // Collapse monthly to yearly series for chart display
+                            const pSeriesYear = collapseSeriesToYears(pSim.series);
+                            const fSeriesYear = collapseSeriesToYears(fSim.series);
+                            const askSeriesYear = collapseSeriesToYears(askSim.series);
+                            const yearsCount = Math.max(pSeriesYear.length, fSeriesYear.length, askSeriesYear.length);
+                            renderInvestmentChart(pSeriesYear, fSeriesYear, yearsCount, askSeriesYear);
                             renderInvestmentResults(pSim, fSim);
                             addAktiespareResult(askSim);
+                            // Update cap reached UI for Aktiesparekonto
+                            const capReachedEl = document.getElementById('invAskCapReached');
+                            if (capReachedEl) {
+                                if (askSim && askSim.capReachedAtMonth) {
+                                    const reachedIndex = askSim.capReachedAtMonth - 1; // 0-based
+                                    const reachedDate = new Date();
+                                    reachedDate.setMonth(reachedDate.getMonth() + reachedIndex);
+                                    const monthFmt = new Intl.DateTimeFormat('da-DK', { month: 'short', year: 'numeric' });
+                                    capReachedEl.value = monthFmt.format(reachedDate);
+                                } else capReachedEl.value = 'Ikke nået';
+                            }
+                            // Do not overwrite the 2026 cap remaining computed from 31-12-2025 (updateAktiespareInfo handles that)
                         }
 
                         function updateStockIncomeTax() {
