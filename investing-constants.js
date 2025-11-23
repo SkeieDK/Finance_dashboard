@@ -24,7 +24,7 @@
         palTaxPct: 15.3,
         // Pension payout rules (high-level): what tax applies on payout depending on pension type
         pensionPayout: {
-            ratepension: { description: 'Beskattes som personlig indkomst ved udbetaling', payoutTaxPct: 38 },
+            ratepension: { description: 'Beskattes som personlig indkomst ved udbetaling', payoutTaxPct: null },
             kapitalpension: { description: 'Engangsudbetaling som regel beskattet med 40% af beløbet', payoutTaxPct: 40 },
             aldersopsparing: { description: 'Ingen skat på udbetaling (ingen arbejdsmarkedsbidrag).', payoutTaxPct: 0 }
         },
