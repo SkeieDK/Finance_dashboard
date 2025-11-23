@@ -1,4 +1,4 @@
-// Investments Module (moved out of Analyse.html)
+// Investments Module - Fixed for Claude Artifacts (no localStorage)
 (function(){
     function fmt(value){ return new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value||0); }
     function parseNum(id, def=0){ const el = document.getElementById(id); const v = parseFloat(el?.value); return isNaN(v) ? def : v; }
@@ -6,9 +6,11 @@
     function addM(date, n){ const d = new Date(date.getTime()); d.setUTCMonth(d.getUTCMonth()+n); return d; }
 
     let chart;
+    // In-memory storage instead of localStorage
     const storage = {
-        get(k, d){ try{ const v = localStorage.getItem(k); return v==null? d : JSON.parse(v);}catch{ return d; } },
-        set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+        data: {},
+        get(k, d){ return this.data[k] != null ? this.data[k] : d; },
+        set(k, v){ this.data[k] = v; }
     };
 
     function amortPayment(balance, annualRatePct, years){
@@ -25,22 +27,22 @@
         const fM = (feePct||0)/100/12;
         let bal = Math.max(0, start||0);
         let totalOwn=0, totalFees=0, totalTax=0;
-        let totalGrossReturn=0; // before tax and fees
+        let totalGrossReturn=0;
         let yearStart = bal, contribYear = 0;
         let capRemCombined = combinedCap != null ? combinedCap : Infinity;
         const points = [];
-        // Apply lump sum at start
+        
         if(lump && lump>0){
             const allowed = capRemCombined !== Infinity ? Math.min(lump, capRemCombined) : lump;
             bal += allowed; totalOwn += allowed; contribYear += allowed; if(capRemCombined !== Infinity) capRemCombined -= allowed;
         }
+        
         for(let i=0;i<months;i++){
             const before = bal;
             bal *= (1+rM);
             totalGrossReturn += (bal - before);
             const fee = bal * fM; bal -= fee; totalFees += fee;
             let contrib = Math.max(0, monthly||0);
-            // Enforce combined lifetime deposit cap (remaining room)
             if(capRemCombined !== Infinity){
                 const allowed = Math.max(0, Math.min(contrib, capRemCombined));
                 contrib = allowed; capRemCombined -= allowed;
@@ -70,25 +72,22 @@
         let baseBal = balance;
         let extraBal = balance;
         const points = [];
-        let totalExtraApplied = 0; // actually applied as extra principal
+        let totalExtraApplied = 0;
         let extraLumpRemaining = Math.max(0, extraLump||0);
         let afterTaxInterestSavedCum = 0;
-        const taxKeep = 1 - ((interestTaxValuePct||0)/100); // keep-rate after tax deduction loss
+        const taxKeep = 1 - ((interestTaxValuePct||0)/100);
         const monthlyRows = [];
 
         for(let i=0;i<months;i++){
             const date = addM(startDate, i);
-            // Baseline payment path
             let baseInterest = 0, basePrincipal = 0;
             if(baseBal > 0){
                 baseInterest = baseBal * r;
                 basePrincipal = Math.min(baseBal, Math.max(0, P - baseInterest));
                 baseBal -= basePrincipal;
             }
-            // Extra-paydown path
             let extraInterest = 0;
             if(extraBal > 0){
-                // Apply extra payment BEFORE interest accrues
                 let extraPay = Math.max(0, extraMonthly||0);
                 if(i===0 && extraLumpRemaining>0){
                     extraPay += extraLumpRemaining;
@@ -99,12 +98,10 @@
                     extraBal -= prepay;
                     totalExtraApplied += prepay;
                 }
-                // Now accrue interest and apply the regular payment P
                 extraInterest = extraBal * r;
                 const principalFromP = Math.min(extraBal, Math.max(0, P - extraInterest));
                 extraBal -= principalFromP;
             }
-            // Net interest saved this month vs baseline
             const interestSaved = Math.max(0, baseInterest - extraInterest);
             afterTaxInterestSavedCum += interestSaved * taxKeep;
 
@@ -118,9 +115,8 @@
                 savedAfterTax: interestSaved * taxKeep
             });
         }
-        // For comparison in table: treat "netReturn" for loan as cumulative after-tax interest saved plus debt reduction
         const finalVal = points[points.length-1]?.balance || 0;
-        const netReturn = finalVal; // there is no market value asset; this is benefit vs. baseline
+        const netReturn = finalVal;
         return { key: 'Ekstra afdrag (værdi)', label: 'Ekstra afdrag (værdi)', color: '#ef4444', points, final: finalVal, totalOwnContrib: totalExtraApplied, totalFees: 0, totalTax: 0, grossReturn: afterTaxInterestSavedCum, netReturn, monthlyRows };
     }
 
@@ -130,7 +126,6 @@
         if(!accounts || accounts.length===0) return;
         const mode = document.getElementById('invChartMode')?.value || 'net';
         const ctx = el.getContext('2d');
-        // Compute axis bounds from data
         const allPoints = accounts.flatMap(a => a.points || []);
         const minDate = allPoints.reduce((m,p) => (!m || p.date < m) ? p.date : m, null);
         const maxDate = allPoints.reduce((m,p) => (!m || p.date > m) ? p.date : m, null);
@@ -169,14 +164,12 @@
     }
 
     function recalc(){
-    const years = parseNum('invYears', 20);
+        const years = parseNum('invYears', 20);
         const startYm = document.getElementById('invStart')?.value || '';
         const startDate = startYm ? new Date(Date.UTC(parseInt(startYm.slice(0,4),10), parseInt(startYm.slice(5),10)-1, 1)) : new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), 1));
-    const type = document.getElementById('invType')?.value || 'monthly';
-    const monthlyAlloc = type==='monthly' ? parseNum('invMonthly', 3000) : 0;
-    const lumpAlloc = type==='lump' ? parseNum('invLumpSum', 0) : 0;
-        const flowOnly = !!document.getElementById('invFlowOnly')?.checked;
-    const timing = document.getElementById('invTiming')?.value || 'start';
+        const type = document.getElementById('invType')?.value || 'monthly';
+        const monthlyAlloc = type==='monthly' ? parseNum('invMonthly', 3000) : 0;
+        const lumpAlloc = type==='lump' ? parseNum('invLumpSum', 0) : 0;
 
         const askMonthlyEl = document.getElementById('askMonthly');
         if(askMonthlyEl && askMonthlyEl.dataset.autosync !== 'false') askMonthlyEl.value = String(monthlyAlloc);
@@ -196,20 +189,15 @@
 
         if(document.getElementById('loanEnabled')?.checked){
             const acc = simulateLoanExtra({ balance: parseNum('loanBalance',0), ratePct: parseNum('loanRate',0), termYears: parseNum('loanTerm',20), payment: parseNum('loanPayment',0), extraMonthly: monthlyAlloc, extraLump: lumpAlloc, years, startDate, interestTaxValuePct: parseNum('loanInterestTaxValue', 26) });
-            // If flow-only, overwrite netReturn to ignore restgæld delta and use only after-tax interest saved
-            if(flowOnly){ acc.netReturn = acc.grossReturn || 0; }
             acc.isLoan = true;
             accounts.push(acc);
-            // Enrich summary with breakdown
             const interestSavedNet = acc.grossReturn || 0;
             const finalDebtDelta = (acc.final || 0) - interestSavedNet;
             setSummary('loanSummary', `${summaryBlock(acc)}
                 <div class="mt-1 text-xs text-gray-500 space-y-1">
                     <div>Efter-skat sparede renter i perioden: <strong>${fmt(interestSavedNet)}</strong></div>
                     <div>Mindre restgæld ved horisont: <strong>${fmt(finalDebtDelta)}</strong></div>
-                    <div>Netto sammenligning: ${flowOnly ? 'Kun løbende efter-skat renter' : 'Efter-skat renter + mindre restgæld'}</div>
                 </div>`);
-            // Render monthly table (compact, last 12 months)
             const detailsEl = document.getElementById('loanDetailsMonthly');
             if(detailsEl){
                 const rows = (acc.monthlyRows||[]).slice(-12).map(r => `<tr>
@@ -250,10 +238,10 @@
         if(invStart){ const now = new Date(); invStart.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`; }
         const mark = (id)=>{ const el = document.getElementById(id); if(!el) return; el.dataset.autosync = 'true'; el.addEventListener('input', ()=>{ el.dataset.autosync = 'false'; }); };
         mark('askMonthly'); mark('freeMonthly');
-    const ids = ['invYears','invStart','invType','invMonthly','invLumpSum','invFlowOnly','invTiming','invChartMode','askEnabled','askStart','askMonthly','askReturn','askTax','askFee','askCapRemaining','freeEnabled','freeStart','freeMonthly','freeReturn','freeTax','freeFee','freeTaxModel','loanEnabled','loanBalance','loanRate','loanTerm','loanPayment','loanInterestTaxValue','loanTarget'];
+        const ids = ['invYears','invStart','invType','invMonthly','invLumpSum','invFlowOnly','invTiming','invChartMode','askEnabled','askStart','askMonthly','askReturn','askTax','askFee','askCapRemaining','freeEnabled','freeStart','freeMonthly','freeReturn','freeTax','freeFee','freeTaxModel','loanEnabled','loanBalance','loanRate','loanTerm','loanPayment','loanInterestTaxValue','loanTarget'];
         ids.forEach(id => { const el = document.getElementById(id); if(!el) return; const evt = el.tagName === 'SELECT' ? 'change' : 'input'; el.addEventListener(evt, recalc); });
         document.getElementById('invRecalcBtn')?.addEventListener('click', recalc);
-        // Toggle monthly/lump inputs
+        
         const typeSel = document.getElementById('invType');
         const monthlyWrap = document.getElementById('invMonthlyWrap');
         const lumpWrap = document.getElementById('invLumpWrap');
@@ -266,22 +254,15 @@
             typeSel.addEventListener('change', updateType);
             updateType();
         }
-    // Restore persisted choices
-    const flowOnlyEl = document.getElementById('invFlowOnly'); if(flowOnlyEl){ flowOnlyEl.checked = storage.get('invFlowOnly', flowOnlyEl.checked); flowOnlyEl.addEventListener('change', ()=>storage.set('invFlowOnly', flowOnlyEl.checked)); }
-    const targetEl = document.getElementById('loanTarget'); if(targetEl){ const saved = storage.get('loanTarget','auto'); targetEl.value = saved; targetEl.addEventListener('change', ()=>storage.set('loanTarget', targetEl.value)); }
-    const chartModeEl = document.getElementById('invChartMode'); if(chartModeEl){ const saved = storage.get('invChartMode','net'); chartModeEl.value = saved; chartModeEl.addEventListener('change', ()=>storage.set('invChartMode', chartModeEl.value)); }
-    const timingEl = document.getElementById('invTiming'); if(timingEl){ const saved = storage.get('invTiming','start'); timingEl.value = saved; timingEl.addEventListener('change', ()=>storage.set('invTiming', timingEl.value)); }
-
-    recalc();
+        
+        recalc();
     }
 
     function renderRecommendation(accounts){
         const el = document.getElementById('invRecommendation'); if(!el) return;
         if(!accounts || !accounts.length){ el.textContent=''; return; }
-        // Recommend by net return (after tax and fees for investments; after-tax interest saved + debt reduction for loan)
         const sorted = [...accounts].sort((a,b)=> (b.netReturn||0) - (a.netReturn||0));
         const best = sorted[0];
-        const lines = sorted.map(a => `${a.label}: ${fmt(a.final)}`);
         el.innerHTML = `<div class="p-2 bg-gray-50 rounded">`+
             `<div class="font-medium mb-1">Anbefaling (simpel): <span class="text-indigo-700">${best.label}</span></div>`+
             `<div class="text-xs text-gray-600">Nettoafkast-rangering: ${sorted.map(a=>`${a.label}: ${fmt(a.netReturn||0)}`).join(' · ')}</div>`+
@@ -326,7 +307,6 @@
                     const rPct = debtNow>0 && interest>0 ? Math.min(25, Math.max(0, (interest / debtNow) * 12 * 100)) : null;
                     setIfEmpty(elRate, rPct, v => Math.round(v*10)/10);
                     setIfEmpty(elPay, outflow, v => Math.round(v));
-                    // Estimate remaining term from annuity formula if possible
                     const rM = rPct!=null ? (rPct/100)/12 : null;
                     if(rM && outflow>debtNow*rM){
                         const n = Math.log(outflow / (outflow - rM*debtNow)) / Math.log(1+rM);

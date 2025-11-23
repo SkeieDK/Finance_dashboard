@@ -1,5 +1,13 @@
 {
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "cors": "^2.8.5"
+  },
+  "scripts": {
+    "start": "node dashboard.js",
+    "dev": "nodemon dashboard.js"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }

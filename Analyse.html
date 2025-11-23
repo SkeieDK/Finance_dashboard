@@ -9,7 +9,7 @@
     <!-- Chart.js for interactive charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns/"></script>
+    <!-- date-fns is included in the adapter bundle; explicit loading can cause 404/blocked errors -->
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -562,8 +562,21 @@
             let loaded = {};
             let loadSummary = [];
             try {
-                const resp = await fetch('/data');
+                // Build fetch URL: use origin when page is served by webserver, otherwise fall back to localhost:3000
+                let fetchUrl;
+                try { fetchUrl = window.location.protocol === 'file:' ? 'http://localhost:3000/data' : (window.location.origin + '/data'); } catch (_) { fetchUrl = '/data'; }
+                const resp = await fetch(fetchUrl);
+                // Parse response and check for partial errors
                 loaded = await resp.json();
+                console.log('Loaded payload from /data:', loaded);
+                if (!resp.ok && resp.status !== 206) {
+                    // Non-ok status that isn't partial content
+                    loadSummary.push(`<span class='text-red-600'>Server error: ${resp.status}</span>`);
+                }
+                if (loaded && loaded._errors && loaded._errors.length) {
+                    // Show which files failed to load
+                    loadSummary.push(`<span class='text-yellow-600'>Nogle filer kunne ikke indlæses: ${loaded._errors.map(e=>e.file).join(', ')}</span>`);
+                }
                 for (const [key, text] of Object.entries(loaded)) {
                     if (text && text.length > 0) {
                         loadSummary.push(`<span class='text-green-600'>${key}.csv indlæst</span>`);
@@ -572,7 +585,9 @@
                     }
                 }
             } catch (e) {
-                loadSummary.push(`<span class='text-red-600'>Fejl ved indlæsning af data</span>`);
+                console.error('Failed to fetch /data:', e);
+                const msg = e && e.message ? e.message : String(e);
+                loadSummary.push(`<span class='text-red-600'>Fejl ved indlæsning af data: ${msg}. Hvis du kører siden lokalt, start serveren via <code>npm start</code> og åbn <a href='http://localhost:3000/Analyse.html' target='_blank' rel='noopener'>http://localhost:3000/Analyse.html</a>.</span>`);
             }
             const loadSummaryEl = document.getElementById('loadSummary');
             if (loadSummaryEl) loadSummaryEl.innerHTML = loadSummary.join(' · ');
@@ -591,22 +606,29 @@
             // Show main dashboard content
             const mainContentEl = document.getElementById('mainContent');
             if (mainContentEl) mainContentEl.style.display = 'block';
-            // Initialize dashboard
-            initializeDashboard('', '', '', ''); // contents already loaded
+            // Initialize dashboard with loaded content
+            initializeDashboard(loaded.lonkonto, loaded.budget, loaded.boliglaan, loaded.amortization);
         }
 
         document.addEventListener('DOMContentLoaded', function(){
             autoLoadAllFilesAndInitDashboard();
         });
 
+        // If Chart or Chart adapter fails to load, show a friendly hint
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js is not loaded. Check that Chart.js and chartjs-adapter-date-fns bundle are available.');
+        }
+
         // --- DATA PARSING & CATEGORIZATION ---
         function parseData(rawData) {
-            if (!rawData) return [];
+                    if (!rawData) return [];
+                    // Remove BOM if present
+                    rawData = String(rawData).replace(/^\uFEFF/, '');
             const rows = rawData.trim().split('\n').map(r => r.trim()).filter(Boolean);
             if (rows.length === 0) return [];
 
             // Detect separator from header line (support ; , or tab)
-            const headerLine = rows[0];
+            const headerLine = rows[0].replace(/^\uFEFF/, '');
             const separator = headerLine.includes(';') ? ';' : (headerLine.includes('\t') ? '\t' : (headerLine.includes(',') ? ',' : ';'));
             const headers = headerLine.split(separator).map(h => h.trim().replace(/"/g, '').toLowerCase());
 
@@ -677,7 +699,7 @@
             }
 
             return dataLines.map(line => {
-                const parts = line.split(separator).map(p => p.trim());
+                const parts = line.split(separator).map(p => p.trim().replace(/^\uFEFF/, ''));
                 const dateStr = parts[idxDate];
                 const date = tryParseDate(dateStr);
                 const description = parts[idxDesc] || '';
@@ -689,10 +711,12 @@
         }
         
         function parseAmortizationData(csvData) {
-            const schedule = {};
+                    const schedule = {};
             const lines = csvData.trim().split('\n');
             if (lines.length < 2) return schedule;
 
+            // Remove BOM from first line if present
+            lines[0] = lines[0].replace(/^\uFEFF/, '');
             const separator = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
             const header = lines[0].toLowerCase().split(separator).map(h => h.trim().replace(/"/g, ''));
             
