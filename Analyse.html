@@ -549,19 +549,69 @@
         // --- NEW: Aktiedepot & Aktiesparekonto ---
         let AKTIEDEPOT_BALANCE = 0;
         let AKTIESPAREKONTO_BALANCE = 0;
+        // Collateral fields removed — we use Værdi DKK only for balances
+        function parseNumberForCsv(s) {
+            if (s === undefined || s === null) return NaN;
+            let t = String(s).trim().replace(/\s+/g, '').replace(/"/g, '');
+            const hasComma = t.indexOf(',') !== -1;
+            const hasDot = t.indexOf('.') !== -1;
+            if (hasComma && hasDot) {
+                // dot as thousands, comma as decimal
+                t = t.replace(/\./g, '').replace(',', '.');
+            } else if (hasDot && !hasComma && /\.(?=\d{3})/.test(t)) {
+                t = t.replace(/\./g, '');
+            } else if (hasComma && !hasDot) {
+                t = t.replace(',', '.');
+            }
+            t = t.replace(/[^0-9.-]/g, '');
+            return parseFloat(t);
+        }
+
         function parseAktieCsv(rawData) {
             if (!rawData) return 0;
+            // Remove BOM
+            rawData = String(rawData).replace(/^\uFEFF/, '');
             const rows = rawData.trim().split(/\r?\n/);
             if (rows.length < 2) return 0;
-            const header = rows[0].split(';').map(h => h.trim().toLowerCase());
-            const valueIdx = header.findIndex(h => h.includes('værdi dkk'));
+            const headerRaw = rows[0].replace(/^\uFEFF/, '');
+            const headerParts = headerRaw.split(';').map(h => h.trim());
+            const header = headerParts.map(h => h.toLowerCase());
+            function normalizeHeaderName(s) {
+                try {
+                    // Normalize then remove diacritics, then transliterate common Danish letters (æ, ø, å) to ascii
+                    const n = String(s || '').normalize('NFKD').replace(/\p{Diacritic}/gu, '');
+                    return n.replace(/[æÆ]/g, 'ae').replace(/[øØ]/g, 'o').replace(/[åÅ]/g, 'aa').toLowerCase().replace(/\s+/g, ' ').trim();
+                } catch (e) {
+                    const n = String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+                    return n.replace(/[æÆ]/g, 'ae').replace(/[øØ]/g, 'o').replace(/[åÅ]/g, 'aa').toLowerCase().replace(/\s+/g, ' ').trim();
+                }
+            }
+            const headerNormalized = headerParts.map(h => normalizeHeaderName(h));
+            // Prefer the 'Værdi DKK' column, then 'Værdi' as a fallback.
+            // We avoid using 'Belåningsværdi' (collateral) which contains 'værdi' as a substring.
+            // Strategy: check for explicit "vaerdi dkk" first, then exact "vaerdi", then a contains-based fallback
+            let valueIdx = headerNormalized.findIndex(h => h === 'vaerdi dkk' || h === 'vaerdidkk');
+            if (valueIdx === -1) {
+                // Exact 'vaerdi' (no DKK) — only use this if there is no explicit 'vaerdi dkk'
+                valueIdx = headerNormalized.findIndex(h => h === 'vaerdi');
+            }
+            if (valueIdx === -1) {
+                // Fallback: find any column that contains 'værdi' but is not 'belånings' (collateral)
+                // Use normalized header array to be diacritic-insensitive
+                valueIdx = headerNormalized.findIndex(h => h.includes('vaerdi') && !h.includes('belanings'));
+            }
+            // Debugging: print header parts and chosen index
+            try { console.debug('parseAktieCsv headerParts:', headerParts, 'normalized:', headerNormalized, 'selected index:', valueIdx, 'selected header:', header[valueIdx], 'original header:', headerParts[valueIdx]); } catch (e) {}
             if (valueIdx === -1) return 0;
             return rows.slice(1).reduce((sum, line) => {
                 const parts = line.split(';');
-                const val = parseFloat(parts[valueIdx].replace(',', '.'));
+                const rawVal = parts[valueIdx] || '';
+                const val = parseNumberForCsv(rawVal);
                 return sum + (isNaN(val) ? 0 : val);
             }, 0);
         }
+
+        // parseAktieCollateralCsv removed — we will not sum 'Belåningsværdi' (collateral) for balances
 
         async function autoLoadAllFilesAndInitDashboard() {
             // Fetch all CSVs as JSON from Node.js server
@@ -605,6 +655,8 @@
             AMORTIZATION_SCHEDULE = loaded.amortization ? parseAmortizationData(loaded.amortization) : {};
             AKTIEDEPOT_BALANCE = parseAktieCsv(loaded.aktiedepot);
             AKTIESPAREKONTO_BALANCE = parseAktieCsv(loaded.aktiesparekonto);
+                        console.debug('Computed balances: AKTIEDEPOT_BALANCE=', AKTIEDEPOT_BALANCE, 'AKTIESPAREKONTO_BALANCE=', AKTIESPAREKONTO_BALANCE);
+            // Collateral values removed — we do not include 'Belåningsværdi' in asset sums
 
             // Build ALL_TRANSACTIONS
             ALL_TRANSACTIONS = [...LONKONTO_TRANSACTIONS, ...BUDGET_TRANSACTIONS, ...BOLIGLAAN_TRANSACTIONS].filter(tx => tx.date <= TODAY);
@@ -1294,8 +1346,9 @@
             const lines = [
                 `<div class="flex justify-between"><span>Lønkonto</span><span>${formatCurrency(lon)}</span></div>`,
                 `<div class="flex justify-between"><span>Budgetkonto</span><span>${formatCurrency(budget)}</span></div>`,
-                `<div class="flex justify-between"><span>Aktiedepot</span><span>${formatCurrency(aktiedepot)}</span></div>`,
-                `<div class="flex justify-between"><span>Aktiesparekonto</span><span>${formatCurrency(aktiespare)}</span></div>`,
+                `<div class="flex justify-between"><span>Aktiedepot (Værdi DKK)</span><span>${formatCurrency(aktiedepot)}</span></div>`,
+                `<div class="flex justify-between"><span>Aktiesparekonto (Værdi DKK)</span><span>${formatCurrency(aktiespare)}</span></div>`,
+                ``,
                 `<hr class="my-2"/><div class="flex justify-between font-semibold"><span>Samlet</span><span>${formatCurrency(lon + budget + aktiedepot + aktiespare)}</span></div>`
             ];
             body.innerHTML = lines.join('');
