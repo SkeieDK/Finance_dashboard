@@ -19,6 +19,16 @@
         aktieIncomeTaxRate1: 0.27, // 27% as decimal
         aktieIncomeTaxRate2: 0.42, // 42% for amounts above the bracket
 
+        // Pension tax rules (Denmark)
+        // PAL-skat: annual tax on pension returns (pension yield) charged at 15.3%
+        palTaxPct: 15.3,
+        // Pension payout rules (high-level): what tax applies on payout depending on pension type
+        pensionPayout: {
+            ratepension: { description: 'Beskattes som personlig indkomst ved udbetaling', payoutTaxPct: 38 },
+            kapitalpension: { description: 'Engangsudbetaling som regel beskattet med 40% af beløbet', payoutTaxPct: 40 },
+            aldersopsparing: { description: 'Ingen skat på udbetaling (ingen arbejdsmarkedsbidrag).', payoutTaxPct: 0 }
+        },
+
         // Misc display options
         defaultCurrencyLocale: 'da-DK', // used for formatting
 
@@ -45,6 +55,13 @@
             const firstPart = bracket * r1;
             const remainder = (v - bracket) * r2;
             return firstPart + remainder;
+        }
+        ,
+        // PAL tax for a given asset value and annual return pct (simple estimate)
+        palAnnualTaxFromValue(value, annualReturnPct) {
+            const pal = Number(this.palTaxPct || 0);
+            const gain = (Number(value || 0) * (Number(annualReturnPct || 0) / 100));
+            return gain * (pal / 100);
         }
     };
 

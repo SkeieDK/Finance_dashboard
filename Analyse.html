@@ -414,8 +414,8 @@
                             document.getElementById('invPensionMonthly').value = p.monthly || 0;
                             document.getElementById('invPensionReturn').value = p.return || 5;
                             // Use aktiedepot for Frie investeringer default balance
-                            const defaultFreeBalance = (typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0);
-                            document.getElementById('invFreeBalance').value = defaultFreeBalance || (f.balance || 0);
+                            const defaultFreeBalance = Math.round(typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0);
+                            document.getElementById('invFreeBalance').value = defaultFreeBalance || Math.round(f.balance || 0);
                             document.getElementById('invFreeMonthly').value = f.monthly || 0;
                             document.getElementById('invFreeReturn').value = f.return || 7;
                             document.getElementById('invFreeTax') && (document.getElementById('invFreeTax').value = f.tax || 27);
@@ -423,13 +423,13 @@
                             document.getElementById('invFreeTaxModel') && (document.getElementById('invFreeTaxModel').value = f.taxModel || 'annual');
                             // Aktiesparekonto defaults
                             const askStored = JSON.parse(localStorage.getItem('invAsk') || '{}');
-                            document.getElementById('invAskBalance').value = typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : (askStored.balance || 0);
+                            document.getElementById('invAskBalance').value = Math.round(typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : (askStored.balance || 0));
                             document.getElementById('invAskMonthly').value = askStored.monthly || 0;
                             document.getElementById('invAskReturn').value = askStored.return || 7;
                             if (window.InvestingRules) {
                                 const cap = InvestingRules.aktiesparekontoCap[2026] || 0;
                                 const capEl = document.getElementById('invAskCap');
-                                if (capEl) capEl.value = cap;
+                                if (capEl) capEl.value = Math.round(cap);
                             }
                             renderSummary();
                             runSimulationAndRender();
@@ -575,7 +575,8 @@
                                         <div class="text-sm font-medium mb-1">Pension</div>
                                         <div>Indbetalt: ${fmt.format(pRes.contributions)}</div>
                                         <div>Slutværdi: ${fmt.format(pRes.finalValue)}</div>
-                                        <div>Betalte gebyrer (est.): ${fmt.format(pRes.feesPaid)}</div>
+                                            <div>Betalte gebyrer (est.): ${fmt.format(pRes.feesPaid)}</div>
+                                            <div>PAL-skat (est., samlet): ${fmt.format(pRes.taxesPaid)}</div>
                                     </div>
                                     <div class="border rounded p-3">
                                         <div class="text-sm font-medium mb-1">Frie investeringer</div>
@@ -594,7 +595,8 @@
                             const result = [];
                             for (let y = 0; y < yearsCount; y++) {
                                 const idx = Math.min((y + 1) * 12 - 1, series.length - 1);
-                                result.push(series[idx]);
+                                // Round year-end value to whole numbers for chart display
+                                result.push(Math.round(series[idx]));
                             }
                             return result;
                         }
@@ -680,8 +682,8 @@
                                 if (!resp.ok) return;
                                 const preview = await resp.json();
                                 const closing = computeAktiespareClosingValueFromPreview(preview.aktiesparekonto, '2025-12-31');
-                                if (askClosingEl) askClosingEl.value = closing;
-                                if (askRemainingEl) askRemainingEl.value = InvestingRules.remainingAktiespareCapacity(2026, closing);
+                                        if (askClosingEl) askClosingEl.value = Math.round(closing);
+                                        if (askRemainingEl) askRemainingEl.value = Math.round(InvestingRules.remainingAktiespareCapacity(2026, closing));
                             } catch (e) { console.debug('updateAktiespareInfo failed', e); }
                         }
 
@@ -691,7 +693,8 @@
                             const pStart = Number(document.getElementById('invPensionBalance').value) || 0;
                             const pMonthly = Number(document.getElementById('invPensionMonthly').value) || 0;
                             const pReturn = Number(document.getElementById('invPensionReturn').value) || 5;
-                            const pSim = simulateSeries(pStart, pMonthly, pYears, pReturn, 0.2, 0, 'deferred');
+                            const pTaxPct = InvestingRules ? InvestingRules.palTaxPct : 15.3;
+                            const pSim = simulateSeries(pStart, pMonthly, pYears, pReturn, 0.2, pTaxPct, 'annual');
 
                             const fYears = 20;
                             const fStart = Number(document.getElementById('invFreeBalance').value) || 0;
@@ -1661,6 +1664,30 @@
                 const fmtShort = d => d ? `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}` : 'n/a';
                 if (dataSourceTextEl) dataSourceTextEl.textContent = `data gathered from CSV, latest data: ${fmtShort(lastDate)}`;
             } catch (e) {}
+
+            // Ensure the Investment UI picks up parsed balances (if user didn't set them manually)
+            try {
+                const askStored = JSON.parse(localStorage.getItem('invAsk') || '{}');
+                const freeStored = JSON.parse(localStorage.getItem('invFree') || '{}');
+                const invFreeEl = document.getElementById('invFreeBalance');
+                if (invFreeEl) {
+                    const currentVal = Number(invFreeEl.value || 0);
+                    // Only auto-fill if currently zero and no stored value
+                    if ((currentVal === 0 || isNaN(currentVal)) && !freeStored.balance) {
+                        invFreeEl.value = (typeof AKTIEDEPOT_BALANCE !== 'undefined' ? AKTIEDEPOT_BALANCE : 0);
+                    }
+                }
+                const invAskEl = document.getElementById('invAskBalance');
+                if (invAskEl) {
+                    const currentAskVal = Number(invAskEl.value || 0);
+                    if ((currentAskVal === 0 || isNaN(currentAskVal)) && !askStored.balance) {
+                        invAskEl.value = (typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : 0);
+                    }
+                }
+                // Refresh the investments UI summary and aktiespare info
+                try { renderSummary(); runSimulationAndRender(); } catch (e) { /* ignore */ }
+                try { updateAktiespareInfo(); } catch (e) { /* ignore */ }
+            } catch (e) { console.debug('Could not auto-fill investment balances', e); }
 
             const lonBalancesByDate = Object.fromEntries(LONKONTO_TRANSACTIONS.map(tx => [tx.date.toISOString().split('T')[0], tx.balance]));
             const budgetBalancesByDate = Object.fromEntries(BUDGET_TRANSACTIONS.map(tx => [tx.date.toISOString().split('T')[0], tx.balance]));
