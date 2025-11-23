@@ -290,6 +290,7 @@
                                         <input type="number" id="invPensionReturn" step="0.1" value="5" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
                                     </div>
                                 </div>
+                                <div class="text-xs text-gray-600 mt-2">PAL-skat: <span id="pensionPalInfo">15,3% af årligt afkast</span></div>
                             </div>
 
                             <div class="border rounded-lg p-4">
@@ -475,8 +476,10 @@
                                 <div class="mb-2"><strong>Samlet depot:</strong> ${fmt.format(totalBalance)}</div>
                                 <div class="mb-2"><strong>Samlet månedligt indskud:</strong> ${fmt.format(totalMonthly)}</div>
                                 <div class="text-xs text-gray-600">Pension: ${fmt.format(pensionBalance)} · ${fmt.format(pensionMonthly)} / md · Forv. afkast ${p.return || document.getElementById('invPensionReturn').value}%</div>
+                                <div class="text-xs text-gray-600">PAL-skat (est.): ${InvestingRules ? InvestingRules.formatCurrency(InvestingRules.palAnnualTaxFromValue(pensionBalance, p.return || document.getElementById('invPensionReturn').value)) : 'n/a'} pr. år</div>
                                 <div class="text-xs text-gray-600">Frie investeringer: ${fmt.format(freeBalance)} · ${fmt.format(freeMonthly)} / md · Forv. afkast ${f.return || document.getElementById('invFreeReturn').value}% · Skat ${f.tax || document.getElementById('invFreeTax')?.value || 'n/a'}%</div>
                                 <div class="text-xs text-gray-600">Aktiesparekonto: ${fmt.format(askBalance)} · ${fmt.format(askMonthly)} / md · Forv. afkast ${Number(document.getElementById('invAskReturn')?.value) || 7}%</div>
+                                <div class="text-xs text-gray-600">Skat ved udbetaling: Ratepension beskattes som personlig indkomst. Kapitalpension: 40% afgift. Aldersopsparing: skattefri ved udbetaling.</div>
                             `;
                         }
 
@@ -504,7 +507,7 @@
                                 feesPaid += fee;
                                 // contribution at end of period — possibly limited by cap
                                 let deposit = monthly;
-                                if (contribCap !== null && typeof contribCap !== 'undefined') {
+                                if (contribCap !== null && typeof contribCap !== 'undefined' && Number(contribCap) > 0) {
                                     const allowed = Math.max(0, contribCap - value);
                                     const depositThisMonth = Math.min(deposit, allowed);
                                     deposit = depositThisMonth;
