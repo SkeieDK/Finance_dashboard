@@ -9,6 +9,8 @@
     <!-- Chart.js for interactive charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- Investing policy constants used by the investments tab. Edit investing-constants.js if rules change. -->
+    <script src="/investing-constants.js"></script>
     <!-- date-fns is included in the adapter bundle; explicit loading can cause 404/blocked errors -->
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -327,6 +329,40 @@
                                 </div>
                             </div>
 
+                            <div class="border rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-lg font-medium text-gray-800">Aktiesparekonto</h3>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Nuværende depot (kr.)</label>
+                                        <input type="number" id="invAskBalance" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Månedlig indbetaling (kr.)</label>
+                                        <input type="number" id="invAskMonthly" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Forventet afkast p.a. (%)</label>
+                                        <input type="number" id="invAskReturn" step="0.1" value="7" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Indskudsloft (forvalgt år)</label>
+                                        <input type="number" id="invAskCap" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" readonly>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Kursværdi 31-12-2025</label>
+                                        <input type="number" id="invAskClosing2025" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" readonly>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Resterende kapacitet 2026</label>
+                                        <input type="number" id="invAskCapRemaining" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" readonly>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="flex gap-3">
                                 <button id="invSaveBtn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700">Gem</button>
                                 <button id="invResetBtn" class="bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-md hover:bg-gray-300">Nulstil</button>
@@ -339,6 +375,20 @@
                         <p class="text-sm text-gray-500 mb-4">Samlet oversigt over indtastede depoter og månedlige indbetalinger.</p>
                         <div id="investmentSummary" class="text-sm text-gray-700">
                             <div>Indlæs data og klik <strong>Gem</strong> for at se oversigten.</div>
+                        </div>
+                        <div class="mt-4 border rounded-lg p-4">
+                            <h3 class="text-md font-medium text-gray-800 mb-2">Aktieindkomst — beregner</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Aktieindkomst (kr.)</label>
+                                    <input type="number" id="invStockIncomeAmount" value="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Estimeret skat (kr.)</label>
+                                    <input type="text" id="invStockIncomeTaxResult" readonly class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-600 mt-2">Skattesatser: <span id="invStockTaxInfo"></span></div>
                         </div>
                         <div class="mt-4">
                             <h3 class="text-md font-medium text-gray-800 mb-2">Graf & Beregninger</h3>
