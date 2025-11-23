@@ -403,7 +403,7 @@
                         const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 0 });
                         const MONTHS_PER_YEAR = 12;
 
-                        function load() {
+                        async function load() {
                             const p = JSON.parse(localStorage.getItem('invPension') || '{}');
                             const f = JSON.parse(localStorage.getItem('invFree') || '{}');
                             document.getElementById('invPensionBalance').value = p.balance || 0;
@@ -416,6 +416,19 @@
                             document.getElementById('invFreeTax') && (document.getElementById('invFreeTax').value = f.tax || 27);
                             document.getElementById('invFreeFee') && (document.getElementById('invFreeFee').value = f.fee || 0.2);
                             document.getElementById('invFreeTaxModel') && (document.getElementById('invFreeTaxModel').value = f.taxModel || 'annual');
+                            // Aktiesparekonto defaults
+                            const askStored = JSON.parse(localStorage.getItem('invAsk') || '{}');
+                            document.getElementById('invAskBalance').value = typeof AKTIESPAREKONTO_BALANCE !== 'undefined' ? AKTIESPAREKONTO_BALANCE : (askStored.balance || 0);
+                            document.getElementById('invAskMonthly').value = askStored.monthly || 0;
+                            document.getElementById('invAskReturn').value = askStored.return || 7;
+                            if (window.InvestingRules) {
+                                const cap = InvestingRules.aktiesparekontoCap[2026] || 0;
+                                const capEl = document.getElementById('invAskCap');
+                                if (capEl) capEl.value = cap;
+                            }
+                            renderSummary();
+                            runSimulationAndRender();
+                            updateAktiespareInfo();
                             renderSummary();
                             runSimulationAndRender();
                         }
@@ -425,6 +438,10 @@
                             const f = { balance: Number(document.getElementById('invFreeBalance').value) || 0, monthly: Number(document.getElementById('invFreeMonthly').value) || 0, return: Number(document.getElementById('invFreeReturn').value) || 0, tax: Number(document.getElementById('invFreeTax').value) || 0, fee: Number(document.getElementById('invFreeFee').value) || 0, taxModel: document.getElementById('invFreeTaxModel').value || 'annual' };
                             localStorage.setItem('invPension', JSON.stringify(p));
                             localStorage.setItem('invFree', JSON.stringify(f));
+                            // Aktiesparekonto
+                            const ask = { balance: Number(document.getElementById('invAskBalance').value) || 0, monthly: Number(document.getElementById('invAskMonthly').value) || 0, return: Number(document.getElementById('invAskReturn').value) || 0 };
+                            localStorage.setItem('invAsk', JSON.stringify(ask));
+                            updateAktiespareInfo();
                             renderSummary();
                             runSimulationAndRender();
                         }
@@ -432,7 +449,9 @@
                         function resetAll() {
                             localStorage.removeItem('invPension');
                             localStorage.removeItem('invFree');
+                            localStorage.removeItem('invAsk');
                             load();
+                            updateAktiespareInfo();
                         }
 
                         function renderSummary(){
@@ -442,14 +461,17 @@
                             const pensionMonthly = p.monthly || Number(document.getElementById('invPensionMonthly').value) || 0;
                             const freeBalance = f.balance || Number(document.getElementById('invFreeBalance').value) || 0;
                             const freeMonthly = f.monthly || Number(document.getElementById('invFreeMonthly').value) || 0;
-                            const totalBalance = pensionBalance + freeBalance;
-                            const totalMonthly = pensionMonthly + freeMonthly;
+                            const askBalance = Number(document.getElementById('invAskBalance')?.value) || Number(JSON.parse(localStorage.getItem('invAsk') || '{}').balance) || 0;
+                            const askMonthly = Number(document.getElementById('invAskMonthly')?.value) || Number(JSON.parse(localStorage.getItem('invAsk') || '{}').monthly) || 0;
+                            const totalBalance = pensionBalance + freeBalance + askBalance;
+                            const totalMonthly = pensionMonthly + freeMonthly + askMonthly;
                             const el = document.getElementById('investmentSummary');
                             el.innerHTML = `
                                 <div class="mb-2"><strong>Samlet depot:</strong> ${fmt.format(totalBalance)}</div>
                                 <div class="mb-2"><strong>Samlet månedligt indskud:</strong> ${fmt.format(totalMonthly)}</div>
                                 <div class="text-xs text-gray-600">Pension: ${fmt.format(pensionBalance)} · ${fmt.format(pensionMonthly)} / md · Forv. afkast ${p.return || document.getElementById('invPensionReturn').value}%</div>
                                 <div class="text-xs text-gray-600">Frie investeringer: ${fmt.format(freeBalance)} · ${fmt.format(freeMonthly)} / md · Forv. afkast ${f.return || document.getElementById('invFreeReturn').value}% · Skat ${f.tax || document.getElementById('invFreeTax')?.value || 'n/a'}%</div>
+                                <div class="text-xs text-gray-600">Aktiesparekonto: ${fmt.format(askBalance)} · ${fmt.format(askMonthly)} / md · Forv. afkast ${Number(document.getElementById('invAskReturn')?.value) || 7}%</div>
                             `;
                         }
 
@@ -507,18 +529,22 @@
                             return { series, finalValue: value, contributions, taxesPaid, feesPaid };
                         }
 
-                        function renderInvestmentChart(pSeries, fSeries, years) {
+                        function renderInvestmentChart(pSeries, fSeries, years, askSeries) {
                             const ctx = document.getElementById('investmentChart').getContext('2d');
                             const labels = pSeries.map((_, i) => `M${i+1}`);
                             if (investmentChartInstance) investmentChartInstance.destroy();
+                            const datasets = [
+                                { label: 'Pension', data: pSeries, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.2 },
+                                { label: 'Frie investeringer', data: fSeries, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.08)', tension: 0.2 }
+                            ];
+                            if (askSeries && Array.isArray(askSeries)) {
+                                datasets.push({ label: 'Aktiesparekonto', data: askSeries, borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.08)', tension: 0.2 });
+                            }
                             investmentChartInstance = new Chart(ctx, {
                                 type: 'line',
                                 data: {
                                     labels,
-                                    datasets: [
-                                        { label: 'Pension', data: pSeries, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.2 },
-                                        { label: 'Frie investeringer', data: fSeries, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.08)', tension: 0.2 }
-                                    ]
+                                    datasets: datasets
                                 },
                                 options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: false } } }
                             });
@@ -545,6 +571,92 @@
                             `;
                         }
 
+                        function addAktiespareResult(askRes) {
+                            const el = document.getElementById('investmentResults');
+                            const html = `
+                                <div class="mt-3 border rounded p-3">
+                                    <div class="text-sm font-medium mb-1">Aktiesparekonto</div>
+                                    <div>Indbetalt: ${fmt.format(askRes.contributions)}</div>
+                                    <div>Slutværdi (efter skat): ${fmt.format(askRes.finalValue)}</div>
+                                    <div>Betalt skat (est.): ${fmt.format(askRes.taxesPaid)}</div>
+                                    <div>Betalte gebyrer (est.): ${fmt.format(askRes.feesPaid)}</div>
+                                </div>
+                            `;
+                            // Append after existing content
+                            el.innerHTML = el.innerHTML + html;
+                        }
+
+                        // Helper: normalize header/property keys in server preview objects (removes diacritics and transliterates)
+                        function normalizeKey(s) {
+                            try {
+                                const n = String(s || '').normalize('NFKD').replace(/\p{Diacritic}/gu, '');
+                                return n.replace(/[æÆ]/g, 'ae').replace(/[øØ]/g, 'o').replace(/[åÅ]/g, 'aa').toLowerCase().replace(/\s+/g, ' ').trim();
+                            } catch (e) {
+                                const n = String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+                                return n.replace(/[æÆ]/g, 'ae').replace(/[øØ]/g, 'o').replace(/[åÅ]/g, 'aa').toLowerCase().replace(/\s+/g, ' ').trim();
+                            }
+                        }
+
+                        // Compute Aktiesparekonto closing value for a target date from server preview data.
+                        // preview: { parsed: [ { "Dato": "22-11-2025", "Værdi DKK": "..." }, ... ], header: '...' }
+                        function computeAktiespareClosingValueFromPreview(preview, targetDateYYYYMMDD) {
+                            if (!preview || !preview.parsed || !preview.parsed.length) return 0;
+                            const parsed = preview.parsed;
+                            const targetDate = new Date(targetDateYYYYMMDD + 'T23:59:59');
+                            // Find property key for 'Værdi DKK' using normalized header name
+                            const firstRow = parsed[0];
+                            const keys = Object.keys(firstRow);
+                            let valueKey = null;
+                            for (const k of keys) {
+                                const nk = normalizeKey(k);
+                                if (nk === 'vaerdi dkk' || nk === 'vaerdidkk') { valueKey = k; break; }
+                            }
+                            if (!valueKey) {
+                                for (const k of keys) {
+                                    const nk = normalizeKey(k);
+                                    if (nk === 'vaerdi') { valueKey = k; break; }
+                                }
+                            }
+                            if (!valueKey) return 0;
+                            // Sum rows where row.Dato <= targetDate
+                            let sum = 0;
+                            for (const row of parsed) {
+                                try {
+                                    const dStr = row['Dato'] || row['dato'] || '';
+                                    // dd-mm-yyyy -> yyyy-mm-dd
+                                    const parts = (dStr || '').split('-');
+                                    if (parts.length === 3) {
+                                        const d = new Date(parts[2] + '-' + parts[1] + '-' + parts[0] + 'T23:59:59');
+                                        if (d <= targetDate) {
+                                            const val = parseNumberForCsv(row[valueKey]);
+                                            if (!isNaN(val)) sum += val;
+                                        }
+                                    }
+                                } catch (e) { /* ignore */ }
+                            }
+                            return sum;
+                        }
+
+                        async function updateAktiespareInfo() {
+                            const askClosingEl = document.getElementById('invAskClosing2025');
+                            const askCapEl = document.getElementById('invAskCap');
+                            const askRemainingEl = document.getElementById('invAskCapRemaining');
+                            if (!window.InvestingRules) return;
+                            // set cap (year 2026)
+                            const cap = InvestingRules.aktiesparekontoCap[2026] || 0;
+                            if (askCapEl) askCapEl.value = cap;
+                            // fetch preview and compute closing value as of 2025-12-31
+                            try {
+                                const resp = await fetch('/data-preview?limit=500');
+                                if (!resp.ok) return;
+                                const preview = await resp.json();
+                                const closing = computeAktiespareClosingValueFromPreview(preview.aktiesparekonto, '2025-12-31');
+                                if (askClosingEl) askClosingEl.value = closing;
+                                if (askRemainingEl) askRemainingEl.value = InvestingRules.remainingAktiespareCapacity(2026, closing);
+                            } catch (e) { console.debug('updateAktiespareInfo failed', e); }
+                        }
+
+
                         function runSimulationAndRender() {
                             const pYears = 20; // default horizon for display
                             const pStart = Number(document.getElementById('invPensionBalance').value) || 0;
@@ -560,14 +672,41 @@
                             const fFee = Number(document.getElementById('invFreeFee').value) || 0.2;
                             const fTaxModel = document.getElementById('invFreeTaxModel').value || 'annual';
                             const fSim = simulateSeries(fStart, fMonthly, fYears, fReturn, fFee, fTax, fTaxModel);
+                            // Aktiesparekonto simulation
+                            const askStart = Number(document.getElementById('invAskBalance').value) || 0;
+                            const askMonthly = Number(document.getElementById('invAskMonthly').value) || 0;
+                            const askReturn = Number(document.getElementById('invAskReturn').value) || 7;
+                            const askTax = InvestingRules ? InvestingRules.aktiesparekontoTaxPct : 17;
+                            const askSim = simulateSeries(askStart, askMonthly, fYears, askReturn, 0.2, askTax, 'annual');
 
-                            renderInvestmentChart(pSim.series, fSim.series, Math.max(pYears, fYears));
+                            // Add a dataset for Aktiesparekonto to the chart, and show results
+                            renderInvestmentChart(pSim.series, fSim.series, Math.max(pYears, fYears), askSim.series);
                             renderInvestmentResults(pSim, fSim);
+                            addAktiespareResult(askSim);
+                        }
+
+                        function updateStockIncomeTax() {
+                            const v = Number(document.getElementById('invStockIncomeAmount').value) || 0;
+                            if (window.InvestingRules) {
+                                const tax = InvestingRules.aktieIncomeTax(v);
+                                document.getElementById('invStockIncomeTaxResult').value = fmt.format(tax);
+                                document.getElementById('invStockTaxInfo').textContent = `0–${InvestingRules.aktieIncomeBracketThreshold} @ ${InvestingRules.aktieIncomeTaxRate1 * 100}% · >${InvestingRules.aktieIncomeBracketThreshold} @ ${InvestingRules.aktieIncomeTaxRate2 * 100}%`;
+                            }
                         }
 
                         document.addEventListener('DOMContentLoaded', function(){
                             document.getElementById('invSaveBtn').addEventListener('click', save);
                             document.getElementById('invResetBtn').addEventListener('click', resetAll);
+                            const stockInput = document.getElementById('invStockIncomeAmount');
+                            if (stockInput) {
+                                stockInput.addEventListener('input', updateStockIncomeTax);
+                                updateStockIncomeTax();
+                            }
+                            // Update UI live when inputs change
+                            ['invPensionBalance','invPensionMonthly','invPensionReturn','invFreeBalance','invFreeMonthly','invFreeReturn','invFreeTax','invFreeFee','invAskBalance','invAskMonthly','invAskReturn'].forEach(id => {
+                                const el = document.getElementById(id);
+                                if (el) el.addEventListener('input', function(){ renderSummary(); runSimulationAndRender(); });
+                            });
                             load();
                         });
                     })();
